@@ -9,7 +9,6 @@ import { ApiResponse } from "../utils/apiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import {
   generateAuthTokens,
-  hashToken,
   rotateRefreshToken,
   verifyRefreshToken,
   revokeSession,
@@ -56,6 +55,7 @@ const auditLogin = async ({ user = null, email, status, reason, req }) => {
   });
 };
 
+// ─── LOGIN ────────────────────────────────────────────────────────────────────
 export const login = asyncHandler(async (req, res) => {
   const { value, error } = loginSchema.validate(req.body);
 
@@ -76,6 +76,7 @@ export const login = asyncHandler(async (req, res) => {
     throw new ApiError(401, "Invalid email or password");
   }
 
+  // Check account active status
   if (user.status !== USER_STATUS.ACTIVE) {
     await auditLogin({
       user,
@@ -88,6 +89,18 @@ export const login = asyncHandler(async (req, res) => {
     throw new ApiError(403, "Your account is not active");
   }
 
+  // FIX BUG 3: Auto-clear the lock once lockUntil has expired naturally.
+  // Without this, loginAttempts stays at 5+ after expiry so the very next
+  // wrong password re-locks the account immediately and permanently.
+  if (user.lockUntil && user.lockUntil <= new Date()) {
+    user.loginAttempts = 0;
+    user.lockUntil = null;
+    user.unlockTokenHash = null;
+    user.unlockTokenExpiresAt = null;
+    await user.save();
+  }
+
+  // Check if still locked (lockUntil is in the future)
   if (user.isLocked()) {
     await auditLogin({
       user,
@@ -97,7 +110,22 @@ export const login = asyncHandler(async (req, res) => {
       req,
     });
 
-    throw new ApiError(423, "Account locked. Please unlock your account.");
+    throw new ApiError(423, "Account locked. Please check your email to unlock your account.");
+  }
+
+  // FIX BUG 8: Verify email before allowing login.
+  // Users created via createUser receive a verification email.
+  // Admin users created via the seed script are pre-verified (isEmailVerified: true).
+  if (!user.isEmailVerified) {
+    await auditLogin({
+      user,
+      email: value.email,
+      status: "failed",
+      reason: "Email not verified",
+      req,
+    });
+
+    throw new ApiError(403, "Please verify your email address before logging in.");
   }
 
   const isPasswordValid = await user.verifyPassword(value.password);
@@ -105,22 +133,35 @@ export const login = asyncHandler(async (req, res) => {
   if (!isPasswordValid) {
     user.loginAttempts += 1;
 
+    // Lock after 5 failed attempts
     if (user.loginAttempts >= 5) {
       user.lockUntil = new Date(Date.now() + 15 * 60 * 1000);
 
-      const unlockToken = user.createSecureToken(
-        "unlockTokenHash",
-        "unlockTokenExpiresAt",
-        30
-      );
+      // FIX BUG 4: sendUnlockEmail now throws if SMTP is not configured.
+      // We catch that here and fall back gracefully: clear the lock token
+      // and direct the admin to unlock the user manually via the admin endpoint.
+      try {
+        const unlockToken = user.createSecureToken(
+          "unlockTokenHash",
+          "unlockTokenExpiresAt",
+          30
+        );
 
-      const unlockUrl = `${env.CLIENT_ORIGIN}/unlock-account?token=${unlockToken}`;
+        const unlockUrl = `${env.CLIENT_ORIGIN}/unlock-account?token=${unlockToken}`;
 
-      await sendUnlockEmail({
-        to: user.email,
-        name: user.name,
-        unlockUrl,
-      });
+        await sendUnlockEmail({
+          to: user.email,
+          name: user.name,
+          unlockUrl,
+        });
+      } catch (emailError) {
+        // SMTP not configured — lock the account but remove the token
+        // since there is no delivery channel for it. An admin must unlock
+        // this account via POST /api/auth/admin/unlock-user/:userId.
+        console.error("[login] Unlock email failed:", emailError.message);
+        user.unlockTokenHash = null;
+        user.unlockTokenExpiresAt = null;
+      }
     }
 
     await user.save();
@@ -133,9 +174,17 @@ export const login = asyncHandler(async (req, res) => {
       req,
     });
 
-    throw new ApiError(401, "Invalid email or password");
+    const remainingAttempts = Math.max(0, 5 - user.loginAttempts);
+
+    throw new ApiError(
+      401,
+      remainingAttempts > 0
+        ? `Invalid email or password. ${remainingAttempts} attempt(s) remaining before lockout.`
+        : "Invalid email or password. Your account has been locked. Please check your email or contact an administrator."
+    );
   }
 
+  // Successful login — reset all lock/attempt state
   user.loginAttempts = 0;
   user.lockUntil = null;
   user.unlockTokenHash = null;
@@ -143,6 +192,26 @@ export const login = asyncHandler(async (req, res) => {
   user.lastLoginAt = new Date();
 
   await user.save();
+
+  // FIX BUG 5: Enforce forcePasswordChange before issuing a full session.
+  // Return a specific code so the frontend can redirect to /change-password.
+  if (user.forcePasswordChange) {
+    await auditLogin({
+      user,
+      email: value.email,
+      status: "failed",
+      reason: "Force password change required",
+      req,
+    });
+
+    return res.status(403).json(
+      new ApiResponse(
+        403,
+        { requiresPasswordChange: true, userId: user._id },
+        "You must change your password before logging in."
+      )
+    );
+  }
 
   const tokens = await generateAuthTokens({ user, req });
 
@@ -154,6 +223,9 @@ export const login = asyncHandler(async (req, res) => {
     req,
   });
 
+  // FIX BUG 6: Tokens are delivered only via httpOnly cookies.
+  // Removed tokens from the JSON body to prevent JS-readable token exposure
+  // which would defeat the purpose of httpOnly and open XSS attack surface.
   res
     .cookie("accessToken", tokens.accessToken, {
       ...cookieOptions,
@@ -169,13 +241,14 @@ export const login = asyncHandler(async (req, res) => {
         200,
         {
           user: sanitizeUser(user),
-          tokens,
+          sessionId: tokens.sessionId,
         },
         "Login successful"
       )
     );
 });
 
+// ─── LOGOUT ───────────────────────────────────────────────────────────────────
 export const logout = asyncHandler(async (req, res) => {
   const refreshToken = getRefreshTokenFromReq(req);
 
@@ -196,6 +269,7 @@ export const logout = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, null, "Logout successful"));
 });
 
+// ─── REFRESH TOKEN ────────────────────────────────────────────────────────────
 export const refreshToken = asyncHandler(async (req, res) => {
   const token = getRefreshTokenFromReq(req);
 
@@ -221,6 +295,7 @@ export const refreshToken = asyncHandler(async (req, res) => {
     throw new ApiError(401, "Invalid refresh token session");
   }
 
+  // FIX BUG 6 (refresh): Same as login — tokens only in cookies, not body.
   res
     .cookie("accessToken", tokens.accessToken, {
       ...cookieOptions,
@@ -231,13 +306,15 @@ export const refreshToken = asyncHandler(async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000,
     })
     .status(200)
-    .json(new ApiResponse(200, { tokens }, "Token refreshed"));
+    .json(new ApiResponse(200, { sessionId: tokens.sessionId }, "Token refreshed"));
 });
 
+// ─── GET ME ───────────────────────────────────────────────────────────────────
 export const getMe = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, sanitizeUser(req.user), "User fetched"));
 });
 
+// ─── CREATE USER (admin only) ─────────────────────────────────────────────────
 export const createUser = asyncHandler(async (req, res) => {
   const { value, error } = createUserSchema.validate(req.body);
 
@@ -295,6 +372,7 @@ export const createUser = asyncHandler(async (req, res) => {
   );
 });
 
+// ─── FORGOT PASSWORD ──────────────────────────────────────────────────────────
 export const forgotPassword = asyncHandler(async (req, res) => {
   const { value, error } = forgotPasswordSchema.validate(req.body);
 
@@ -304,10 +382,11 @@ export const forgotPassword = asyncHandler(async (req, res) => {
 
   const user = await User.findOne({ email: value.email });
 
+  // Always return the same response to prevent email enumeration
   if (!user) {
     return res
       .status(200)
-      .json(new ApiResponse(200, null, "If email exists, reset link has been sent"));
+      .json(new ApiResponse(200, null, "If that email exists, a reset link has been sent"));
   }
 
   const resetToken = user.createSecureToken(
@@ -328,9 +407,10 @@ export const forgotPassword = asyncHandler(async (req, res) => {
 
   res
     .status(200)
-    .json(new ApiResponse(200, null, "If email exists, reset link has been sent"));
+    .json(new ApiResponse(200, null, "If that email exists, a reset link has been sent"));
 });
 
+// ─── RESET PASSWORD ───────────────────────────────────────────────────────────
 export const resetPassword = asyncHandler(async (req, res) => {
   const { value, error } = resetPasswordSchema.validate(req.body);
 
@@ -363,6 +443,7 @@ export const resetPassword = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, null, "Password reset successful"));
 });
 
+// ─── VERIFY EMAIL ─────────────────────────────────────────────────────────────
 export const verifyEmail = asyncHandler(async (req, res) => {
   const token = req.query.token || req.body.token;
 
@@ -390,6 +471,7 @@ export const verifyEmail = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, null, "Email verified successfully"));
 });
 
+// ─── UNLOCK ACCOUNT ───────────────────────────────────────────────────────────
 export const unlockAccount = asyncHandler(async (req, res) => {
   const token = req.query.token || req.body.token;
 
@@ -418,6 +500,29 @@ export const unlockAccount = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, null, "Account unlocked successfully"));
 });
 
+// ─── ADMIN: UNLOCK USER (fallback when SMTP is not configured) ────────────────
+// FIX BUG 4: When SMTP is not set up and a user gets locked,
+// this admin-only endpoint gives an escape hatch without email.
+export const adminUnlockUser = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+
+  const user = await User.findById(userId);
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  user.loginAttempts = 0;
+  user.lockUntil = null;
+  user.unlockTokenHash = null;
+  user.unlockTokenExpiresAt = null;
+
+  await user.save();
+
+  res.status(200).json(new ApiResponse(200, sanitizeUser(user), "User account unlocked by admin"));
+});
+
+// ─── UPDATE PROFILE ───────────────────────────────────────────────────────────
 export const updateProfile = asyncHandler(async (req, res) => {
   const { value, error } = updateProfileSchema.validate(req.body);
 
@@ -434,6 +539,7 @@ export const updateProfile = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, sanitizeUser(user), "Profile updated"));
 });
 
+// ─── CHANGE PASSWORD ──────────────────────────────────────────────────────────
 export const changePassword = asyncHandler(async (req, res) => {
   const { value, error } = changePasswordSchema.validate(req.body);
 
@@ -463,6 +569,7 @@ export const changePassword = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, null, "Password changed successfully. Please login again."));
 });
 
+// ─── GET MY SESSIONS ──────────────────────────────────────────────────────────
 export const getMySessions = asyncHandler(async (req, res) => {
   const sessions = await AuthSession.find({
     user: req.user._id,
@@ -473,6 +580,7 @@ export const getMySessions = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, sessions, "Sessions fetched"));
 });
 
+// ─── REVOKE MY SESSION ────────────────────────────────────────────────────────
 export const revokeMySession = asyncHandler(async (req, res) => {
   const { sessionId } = req.params;
 
