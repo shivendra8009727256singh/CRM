@@ -7,13 +7,15 @@ import cookieParser from "cookie-parser";
 import { env } from "./config/env.js";
 
 import authRoutes from "./routes/auth.routes.js";
-
-import {
-  notFound,
-  errorHandler,
-} from "./middleware/error.middleware.js";
+import { notFound, errorHandler } from "./middleware/error.middleware.js";
 
 const app = express();
+
+// the first proxy hop so req.ip reflects the real
+// client IP when running behind Nginx / a load balancer / Railway / Render.
+// Without this, req.ip is always the proxy's internal IP and rate-limiting
+// + audit logs record the wrong address.
+app.set("trust proxy", 1);
 
 app.use(helmet());
 
