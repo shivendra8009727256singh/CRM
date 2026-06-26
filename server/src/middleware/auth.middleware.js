@@ -25,7 +25,54 @@ export const requireAuth = asyncHandler(async (req, res, next) => {
     throw new ApiError(401, "Authentication required");
   }
 
-  const decoded = verifyAccessToken(token);
+  // (auth middleware): verifyAccessToken throws JsonWebTokenError
+  // or TokenExpiredError on bad/expired tokens — catch and convert to 401.
+  let decoded;
+  try {
+    decoded = verifyAccessToken(token);
+  } catch {
+    throw new ApiError(401, "Invalid or expired token");
+  }
+
+  // Block restricted forceChange tokens from accessing any
+  // route except /change-password. The login controller issues these
+  // short-lived tokens so the user can break out of the deadlock without
+  // getting a full session.
+  if (decoded.forceChange) {
+    throw new ApiError(
+      403,
+      "You must change your password before accessing this resource."
+    );
+  }
+
+  const user = await User.findById(decoded.sub);
+
+  if (!user) {
+    throw new ApiError(401, "Invalid or expired token");
+  }
+
+  if (user.status !== USER_STATUS.ACTIVE) {
+    throw new ApiError(403, "Your account is not active");
+  }
+
+  req.user = user;
+  next();
+});
+
+// Separate middleware for the change-password route that ACCEPTS forceChange tokens.
+export const requireAuthOrForceChange = asyncHandler(async (req, res, next) => {
+  const token = getTokenFromRequest(req);
+
+  if (!token) {
+    throw new ApiError(401, "Authentication required");
+  }
+
+  let decoded;
+  try {
+    decoded = verifyAccessToken(token);
+  } catch {
+    throw new ApiError(401, "Invalid or expired token");
+  }
 
   const user = await User.findById(decoded.sub);
 
