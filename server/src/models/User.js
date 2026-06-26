@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import mongoose from "mongoose";
+import { env } from "../config/env.js";
 import { ROLE_PERMISSIONS, ROLES, USER_STATUS } from "../constants/roles.js";
 
 const userSchema = new mongoose.Schema(
@@ -61,8 +62,11 @@ userSchema.pre("save", function (next) {
   next();
 });
 
+// FIX: Use env.BCRYPT_ROUNDS instead of hardcoded 12.
+// env.js already reads BCRYPT_ROUNDS from .env with a default of 12,
+// so this is a no-op change in practice but respects the config properly.
 userSchema.methods.setPassword = async function (password) {
-  this.passwordHash = await bcrypt.hash(password, 12);
+  this.passwordHash = await bcrypt.hash(password, env.BCRYPT_ROUNDS);
   this.passwordChangedAt = new Date();
 };
 
@@ -91,7 +95,6 @@ userSchema.methods.toSafeObject = function () {
   return obj;
 };
 
-// userSchema.index({ email: 1 });
 userSchema.index({ role: 1 });
 userSchema.index({ status: 1 });
 userSchema.index({ employee: 1 });
