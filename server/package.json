@@ -4,11 +4,10 @@
   "description": "",
   "main": "src/index.js",
   "scripts": {
-    "dev": "nodemon server/src/index.js",
-    "server:dev": "nodemon server/src/index.js",
-    "start": "node server/src/index.js",
-    "create-admin": "node server/src/scripts/createAdmin.js",
-    "test": "node --test server/src/tests/auth.test.js"
+    "dev": "nodemon src/index.js",
+    "start": "node src/index.js",
+    "create-admin": "node src/scripts/createAdmin.js",
+    "test": "node --test src/tests/auth.test.js"
   },
   "keywords": [],
   "author": "",
