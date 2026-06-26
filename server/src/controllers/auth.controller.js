@@ -9,6 +9,7 @@ import { ApiResponse } from "../utils/apiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import {
   generateAuthTokens,
+  generateAccessToken,
   rotateRefreshToken,
   verifyRefreshToken,
   revokeSession,
@@ -34,8 +35,16 @@ const cookieOptions = {
   sameSite: "strict",
 };
 
+//  X-Forwarded-For can be a comma-separated list of IPs
+// (client, proxy1, proxy2…). Always take the first value — that is
+// the original client IP. req.ip is set correctly when trust proxy is
+// enabled in app.js, so prefer it; fall back to the raw header only
+// as a last resort.
 const getClientIp = (req) => {
-  return req.ip || req.headers["x-forwarded-for"] || "";
+  if (req.ip) return req.ip;
+  const forwarded = req.headers["x-forwarded-for"];
+  if (forwarded) return forwarded.split(",")[0].trim();
+  return "";
 };
 
 const getRefreshTokenFromReq = (req) => {
@@ -72,7 +81,6 @@ export const login = asyncHandler(async (req, res) => {
       reason: "User not found",
       req,
     });
-
     throw new ApiError(401, "Invalid email or password");
   }
 
@@ -85,11 +93,10 @@ export const login = asyncHandler(async (req, res) => {
       reason: "Inactive or blocked account",
       req,
     });
-
     throw new ApiError(403, "Your account is not active");
   }
 
-  // FIX BUG 3: Auto-clear the lock once lockUntil has expired naturally.
+  // Auto-clear the lock once lockUntil has expired naturally.
   // Without this, loginAttempts stays at 5+ after expiry so the very next
   // wrong password re-locks the account immediately and permanently.
   if (user.lockUntil && user.lockUntil <= new Date()) {
@@ -109,13 +116,10 @@ export const login = asyncHandler(async (req, res) => {
       reason: "Account already locked",
       req,
     });
-
     throw new ApiError(423, "Account locked. Please check your email to unlock your account.");
   }
 
-  // FIX BUG 8: Verify email before allowing login.
-  // Users created via createUser receive a verification email.
-  // Admin users created via the seed script are pre-verified (isEmailVerified: true).
+  // Verify email before allowing login
   if (!user.isEmailVerified) {
     await auditLogin({
       user,
@@ -124,7 +128,6 @@ export const login = asyncHandler(async (req, res) => {
       reason: "Email not verified",
       req,
     });
-
     throw new ApiError(403, "Please verify your email address before logging in.");
   }
 
@@ -133,31 +136,20 @@ export const login = asyncHandler(async (req, res) => {
   if (!isPasswordValid) {
     user.loginAttempts += 1;
 
-    // Lock after 5 failed attempts
     if (user.loginAttempts >= 5) {
       user.lockUntil = new Date(Date.now() + 15 * 60 * 1000);
 
-      // FIX BUG 4: sendUnlockEmail now throws if SMTP is not configured.
-      // We catch that here and fall back gracefully: clear the lock token
-      // and direct the admin to unlock the user manually via the admin endpoint.
+      // If sendUnlockEmail throws (SMTP not configured), fall back gracefully:
+      // clear the token and let admin unlock via the admin endpoint.
       try {
         const unlockToken = user.createSecureToken(
           "unlockTokenHash",
           "unlockTokenExpiresAt",
           30
         );
-
         const unlockUrl = `${env.CLIENT_ORIGIN}/unlock-account?token=${unlockToken}`;
-
-        await sendUnlockEmail({
-          to: user.email,
-          name: user.name,
-          unlockUrl,
-        });
+        await sendUnlockEmail({ to: user.email, name: user.name, unlockUrl });
       } catch (emailError) {
-        // SMTP not configured — lock the account but remove the token
-        // since there is no delivery channel for it. An admin must unlock
-        // this account via POST /api/auth/admin/unlock-user/:userId.
         console.error("[login] Unlock email failed:", emailError.message);
         user.unlockTokenHash = null;
         user.unlockTokenExpiresAt = null;
@@ -175,7 +167,6 @@ export const login = asyncHandler(async (req, res) => {
     });
 
     const remainingAttempts = Math.max(0, 5 - user.loginAttempts);
-
     throw new ApiError(
       401,
       remainingAttempts > 0
@@ -184,18 +175,18 @@ export const login = asyncHandler(async (req, res) => {
     );
   }
 
-  // Successful login — reset all lock/attempt state
+  // Successful password — reset all lock/attempt state
   user.loginAttempts = 0;
   user.lockUntil = null;
   user.unlockTokenHash = null;
   user.unlockTokenExpiresAt = null;
-  user.lastLoginAt = new Date();
 
-  await user.save();
-
-  // FIX BUG 5: Enforce forcePasswordChange before issuing a full session.
-  // Return a specific code so the frontend can redirect to /change-password.
+  // Check forcePasswordChange BEFORE writing lastLoginAt and
+  // saving. The previous version saved lastLoginAt even when no session was
+  // ultimately issued, which is misleading in audit logs.
   if (user.forcePasswordChange) {
+    await user.save();
+
     await auditLogin({
       user,
       email: value.email,
@@ -204,14 +195,31 @@ export const login = asyncHandler(async (req, res) => {
       req,
     });
 
-    return res.status(403).json(
-      new ApiResponse(
-        403,
-        { requiresPasswordChange: true, userId: user._id },
-        "You must change your password before logging in."
-      )
-    );
+    //  Issue a restricted one-time token that is ONLY valid for
+    // the /change-password endpoint. Without a token the user is completely
+    // deadlocked: login blocks → no token → can't call /change-password
+    // (which requires requireAuth). The token has a short 10-minute TTL and
+    // carries a "forceChange" flag so requireAuth can reject it everywhere
+    // except the change-password route.
+    const tempToken = generateAccessToken(user, { forceChange: true, expiresIn: "10m" });
+
+    return res
+      .cookie("accessToken", tempToken, {
+        ...cookieOptions,
+        maxAge: 10 * 60 * 1000,
+      })
+      .status(403)
+      .json(
+        new ApiResponse(
+          403,
+          { requiresPasswordChange: true },
+          "You must change your password before logging in."
+        )
+      );
   }
+
+  user.lastLoginAt = new Date();
+  await user.save();
 
   const tokens = await generateAuthTokens({ user, req });
 
@@ -223,9 +231,8 @@ export const login = asyncHandler(async (req, res) => {
     req,
   });
 
-  // FIX BUG 6: Tokens are delivered only via httpOnly cookies.
-  // Removed tokens from the JSON body to prevent JS-readable token exposure
-  // which would defeat the purpose of httpOnly and open XSS attack surface.
+  // Tokens delivered only via httpOnly cookies — NOT in the JSON body.
+  // Putting tokens in the body lets any JS read them, defeating httpOnly.
   res
     .cookie("accessToken", tokens.accessToken, {
       ...cookieOptions,
@@ -277,7 +284,15 @@ export const refreshToken = asyncHandler(async (req, res) => {
     throw new ApiError(401, "Refresh token required");
   }
 
-  const decoded = verifyRefreshToken(token);
+  //  verifyRefreshToken throws a JsonWebTokenError / TokenExpiredError
+  // if the token is invalid or expired. Without a try/catch those errors bubble
+  // up as unhandled 500s instead of clean 401s.
+  let decoded;
+  try {
+    decoded = verifyRefreshToken(token);
+  } catch {
+    throw new ApiError(401, "Invalid or expired refresh token");
+  }
 
   const user = await User.findById(decoded.sub);
 
@@ -285,17 +300,12 @@ export const refreshToken = asyncHandler(async (req, res) => {
     throw new ApiError(401, "Invalid refresh token");
   }
 
-  const tokens = await rotateRefreshToken({
-    oldRefreshToken: token,
-    user,
-    req,
-  });
+  const tokens = await rotateRefreshToken({ oldRefreshToken: token, user, req });
 
   if (!tokens) {
     throw new ApiError(401, "Invalid refresh token session");
   }
 
-  // FIX BUG 6 (refresh): Same as login — tokens only in cookies, not body.
   res
     .cookie("accessToken", tokens.accessToken, {
       ...cookieOptions,
@@ -357,18 +367,10 @@ export const createUser = asyncHandler(async (req, res) => {
 
   const verifyUrl = `${env.CLIENT_ORIGIN}/verify-email?token=${verificationToken}`;
 
-  await sendVerificationEmail({
-    to: user.email,
-    name: user.name,
-    verifyUrl,
-  });
+  await sendVerificationEmail({ to: user.email, name: user.name, verifyUrl });
 
   res.status(201).json(
-    new ApiResponse(
-      201,
-      sanitizeUser(user),
-      `${value.role} user created successfully`
-    )
+    new ApiResponse(201, sanitizeUser(user), `${value.role} user created successfully`)
   );
 });
 
@@ -399,11 +401,7 @@ export const forgotPassword = asyncHandler(async (req, res) => {
 
   const resetUrl = `${env.CLIENT_ORIGIN}/reset-password?token=${resetToken}`;
 
-  await sendResetPasswordEmail({
-    to: user.email,
-    name: user.name,
-    resetUrl,
-  });
+  await sendResetPasswordEmail({ to: user.email, name: user.name, resetUrl });
 
   res
     .status(200)
@@ -471,7 +469,7 @@ export const verifyEmail = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, null, "Email verified successfully"));
 });
 
-// ─── UNLOCK ACCOUNT ───────────────────────────────────────────────────────────
+// ─── UNLOCK ACCOUNT (via email token link) ────────────────────────────────────
 export const unlockAccount = asyncHandler(async (req, res) => {
   const token = req.query.token || req.body.token;
 
@@ -501,8 +499,6 @@ export const unlockAccount = asyncHandler(async (req, res) => {
 });
 
 // ─── ADMIN: UNLOCK USER (fallback when SMTP is not configured) ────────────────
-// FIX BUG 4: When SMTP is not set up and a user gets locked,
-// this admin-only endpoint gives an escape hatch without email.
 export const adminUnlockUser = asyncHandler(async (req, res) => {
   const { userId } = req.params;
 
@@ -585,14 +581,8 @@ export const revokeMySession = asyncHandler(async (req, res) => {
   const { sessionId } = req.params;
 
   await AuthSession.findOneAndUpdate(
-    {
-      _id: sessionId,
-      user: req.user._id,
-    },
-    {
-      isRevoked: true,
-      revokedAt: new Date(),
-    }
+    { _id: sessionId, user: req.user._id },
+    { isRevoked: true, revokedAt: new Date() }
   );
 
   res.status(200).json(new ApiResponse(200, null, "Session revoked"));
