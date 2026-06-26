@@ -8,15 +8,20 @@ const getRefreshTokenExpiryDate = () => {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 };
 
-export const generateAccessToken = (user) => {
+// Accept optional overrides (e.g. forceChange:true, expiresIn:"10m")
+// so the login controller can issue a restricted temp token when
+// forcePasswordChange is set, without creating a full session.
+export const generateAccessToken = (user, overrides = {}) => {
+  const { expiresIn, ...extraClaims } = overrides;
   return jwt.sign(
     {
       sub: user._id.toString(),
       role: user.role,
       permissions: user.permissions || [],
+      ...extraClaims,
     },
     env.JWT_ACCESS_SECRET,
-    { expiresIn: env.JWT_ACCESS_EXPIRES_IN }
+    { expiresIn: expiresIn || env.JWT_ACCESS_EXPIRES_IN }
   );
 };
 
@@ -61,11 +66,7 @@ export const generateAuthTokens = async ({ user, req }) => {
   const accessToken = generateAccessToken(user);
   const refreshToken = generateRefreshToken(user);
 
-  const session = await createAuthSession({
-    user,
-    refreshToken,
-    req,
-  });
+  const session = await createAuthSession({ user, refreshToken, req });
 
   return {
     accessToken,
