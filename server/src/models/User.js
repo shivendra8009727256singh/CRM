@@ -55,11 +55,10 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-userSchema.pre("save", function (next) {
+userSchema.pre("save", async function () {
   if (!this.permissions?.length) {
     this.permissions = ROLE_PERMISSIONS[this.role] || [];
   }
-  next();
 });
 
 // FIX: Use env.BCRYPT_ROUNDS instead of hardcoded 12.
