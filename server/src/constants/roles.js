@@ -1,77 +1,108 @@
+import { PERMISSIONS } from "./permissions.js";
+
 export const ROLES = Object.freeze({
-    ADMIN: "admin",
-    HR: "hr",
-    SUPPORT: "support",
-    EMPLOYEE: "employee",
-  });
-  
-  export const USER_STATUS = Object.freeze({
-    ACTIVE: "active",
-    INACTIVE: "inactive",
-    BLOCKED: "blocked",
-  });
-  
-  export const ROLE_PERMISSIONS = Object.freeze({
-    admin: [
-      "auth:me",
-  
-      "user:create",
-      "user:read",
-      "user:update",
-      "user:delete",
-  
-      "hr:create",
-      "support:create",
-  
-      "employee:create",
-      "employee:read",
-      "employee:update",
-      "employee:delete",
-  
-      "attendance:manage",
-      "leave:manage",
-      "payroll:manage",
-  
-      "ticket:manage",
-      "notification:manage",
-      "report:manage",
-      "setting:manage",
-    ],
-  
-    hr: [
-      "auth:me",
-  
-      "employee:create",
-      "employee:read",
-      "employee:update",
-  
-      "attendance:manage",
-      "leave:manage",
-      "payroll:read",
-      "report:read",
-    ],
-  
-    support: [
-      "auth:me",
-  
-      "employee:read",
-      "ticket:create",
-      "ticket:read",
-      "ticket:update",
-      "notification:read",
-    ],
-  
-    employee: [
-      "auth:me",
-  
-      "profile:read",
-      "profile:update",
-  
-      "attendance:self",
-      "leave:self",
-  
-      "ticket:create",
-      "ticket:self",
-      "notification:read",
-    ],
-  });
+  ADMIN: "admin",
+  HR: "hr",
+  SUPPORT: "support",
+  EMPLOYEE: "employee",
+});
+
+export const USER_STATUS = Object.freeze({
+  ACTIVE: "active",
+  INACTIVE: "inactive",
+  BLOCKED: "blocked",
+});
+
+export const ROLE_PERMISSIONS = Object.freeze({
+  admin: [
+    PERMISSIONS.AUTH_ME,
+    PERMISSIONS.PROFILE_READ,
+    PERMISSIONS.PROFILE_UPDATE,
+
+    PERMISSIONS.USER_CREATE,
+    PERMISSIONS.USER_READ,
+    PERMISSIONS.USER_UPDATE,
+    PERMISSIONS.USER_DELETE,
+    PERMISSIONS.USER_BLOCK,
+    PERMISSIONS.USER_UNBLOCK,
+    PERMISSIONS.USER_RESET_PASSWORD,
+    PERMISSIONS.USER_ASSIGN_ROLE,
+    PERMISSIONS.USER_ASSIGN_PERMISSION,
+
+    PERMISSIONS.HR_CREATE,
+    PERMISSIONS.HR_READ,
+    PERMISSIONS.HR_UPDATE,
+
+    PERMISSIONS.SUPPORT_CREATE,
+    PERMISSIONS.SUPPORT_READ,
+    PERMISSIONS.SUPPORT_UPDATE,
+
+    PERMISSIONS.EMPLOYEE_CREATE,
+    PERMISSIONS.EMPLOYEE_READ,
+    PERMISSIONS.EMPLOYEE_UPDATE,
+    PERMISSIONS.EMPLOYEE_DELETE,
+
+    PERMISSIONS.ATTENDANCE_MANAGE,
+    PERMISSIONS.LEAVE_MANAGE,
+    PERMISSIONS.PAYROLL_MANAGE,
+
+    PERMISSIONS.TICKET_MANAGE,
+    PERMISSIONS.NOTIFICATION_MANAGE,
+    PERMISSIONS.REPORT_MANAGE,
+    PERMISSIONS.SETTING_MANAGE,
+  ],
+
+  hr: [
+    PERMISSIONS.AUTH_ME,
+    PERMISSIONS.PROFILE_READ,
+    PERMISSIONS.PROFILE_UPDATE,
+
+    PERMISSIONS.USER_READ,
+    PERMISSIONS.USER_UPDATE,
+    PERMISSIONS.USER_BLOCK,
+    PERMISSIONS.USER_UNBLOCK,
+    PERMISSIONS.USER_RESET_PASSWORD,
+
+    PERMISSIONS.SUPPORT_CREATE,
+    PERMISSIONS.SUPPORT_READ,
+    PERMISSIONS.SUPPORT_UPDATE,
+
+    PERMISSIONS.EMPLOYEE_CREATE,
+    PERMISSIONS.EMPLOYEE_READ,
+    PERMISSIONS.EMPLOYEE_UPDATE,
+    PERMISSIONS.EMPLOYEE_DELETE,
+
+    PERMISSIONS.ATTENDANCE_MANAGE,
+    PERMISSIONS.LEAVE_MANAGE,
+    PERMISSIONS.PAYROLL_READ,
+    PERMISSIONS.REPORT_READ,
+  ],
+
+  support: [
+    PERMISSIONS.AUTH_ME,
+    PERMISSIONS.PROFILE_READ,
+    PERMISSIONS.PROFILE_UPDATE,
+
+    PERMISSIONS.EMPLOYEE_READ,
+
+    PERMISSIONS.TICKET_CREATE,
+    PERMISSIONS.TICKET_READ,
+    PERMISSIONS.TICKET_UPDATE,
+
+    PERMISSIONS.NOTIFICATION_READ,
+  ],
+
+  employee: [
+    PERMISSIONS.AUTH_ME,
+    PERMISSIONS.PROFILE_READ,
+    PERMISSIONS.PROFILE_UPDATE,
+
+    PERMISSIONS.ATTENDANCE_SELF,
+    PERMISSIONS.LEAVE_SELF,
+
+    PERMISSIONS.TICKET_CREATE,
+    PERMISSIONS.TICKET_SELF,
+
+    PERMISSIONS.NOTIFICATION_READ,
+  ],
+});

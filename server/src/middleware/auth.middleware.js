@@ -35,8 +35,6 @@ export const requireAuth = asyncHandler(async (req, res, next) => {
   }
 
   // Block restricted forceChange tokens from accessing any
-  // route except /change-password. The login controller issues these
-  // short-lived tokens so the user can break out of the deadlock without
   // getting a full session.
   if (decoded.forceChange) {
     throw new ApiError(

@@ -7,19 +7,17 @@ import cookieParser from "cookie-parser";
 import { env } from "./config/env.js";
 import authRoutes from "./routes/auth.routes.js";
 import { notFound, errorHandler } from "./middleware/error.middleware.js";
+import userRoutes from "./routes/user.routes.js";
 
 const app = express();
 
 // Trust first proxy hop so req.ip reflects the real client IP
-// behind Nginx / load balancer / Railway / Render.
 app.set("trust proxy", 1);
 
 app.use(helmet());
 
-// FIX: Allow both the frontend origin AND tools like Postman / Thunder Client.
+//  Allow both the frontend origin AND tools like Postman / Thunder Client.
 // When a request has no Origin header (Postman, curl, mobile apps) the
-// origin callback receives null — we allow it in development so API testing works.
-// In production only CLIENT_ORIGIN is allowed.
 const allowedOrigins = [env.CLIENT_ORIGIN];
 
 app.use(
@@ -59,7 +57,8 @@ app.get("/", (req, res) => {
   });
 });
 
-app.use("/api/auth", authRoutes);
+app.use("/auth", authRoutes);
+app.use("/users", userRoutes);
 
 app.use(notFound);
 
