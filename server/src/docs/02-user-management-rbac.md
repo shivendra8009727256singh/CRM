@@ -50,4 +50,4 @@ Employee can:
 Base URL:
 
 ```txt
-/api/users
+/users
