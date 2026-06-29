@@ -76,24 +76,31 @@ export const login = asyncHandler(async (req, res) => {
     "companyId",
     "companyName companyCode status subscriptionStatus subscriptionPlan enabledModules"
   );
+  if (!user) {
+    await auditLogin({
+        email: value.email,
+        status: "failed",
+        reason: "User not found",
+        req,
+    });
 
-  if (
+    throw new ApiError(
+        401,
+        "Invalid email or password"
+    );
+}
+
+if (
     user.role !== ROLES.SUPER_ADMIN &&
     user.companyId &&
     user.companyId.status === "suspended"
-  ) {
-    throw new ApiError(403, "Your company account is suspended");
-  }
+) {
+    throw new ApiError(
+        403,
+        "Your company account is suspended"
+    );
+}
 
-  if (!user) {
-    await auditLogin({
-      email: value.email,
-      status: "failed",
-      reason: "User not found",
-      req,
-    });
-    throw new ApiError(401, "Invalid email or password");
-  }
 
   // Check account active status
   if (user.status !== USER_STATUS.ACTIVE) {
@@ -352,9 +359,17 @@ export const createUser = asyncHandler(async (req, res) => {
     throw new ApiError(400, error.details[0].message);
   }
 
-  if (req.user.role !== ROLES.ADMIN) {
-    throw new ApiError(403, "Only admin can create users");
-  }
+  if (
+    ![
+        ROLES.SUPER_ADMIN,
+        ROLES.COMPANY_ADMIN
+    ].includes(req.user.role)
+) {
+    throw new ApiError(
+        403,
+        "Permission denied."
+    );
+}
 
   const exists = await User.findOne({ email: value.email });
 
