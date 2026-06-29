@@ -18,6 +18,15 @@ const getTokenFromRequest = (req) => {
   return null;
 };
 
+const buildAuthContext = (user) => ({
+  userId: user._id,
+  role: user.role,
+  companyId: user.companyId?._id || null,
+  company: user.companyId || null,
+  isPlatformUser: Boolean(user.isPlatformUser),
+  permissions: user.permissions || [],
+});
+
 export const requireAuth = asyncHandler(async (req, res, next) => {
   const token = getTokenFromRequest(req);
 
@@ -25,7 +34,51 @@ export const requireAuth = asyncHandler(async (req, res, next) => {
     throw new ApiError(401, "Authentication required");
   }
 
-  const decoded = verifyAccessToken(token);
+  let decoded;
+
+  try {
+    decoded = verifyAccessToken(token);
+  } catch {
+    throw new ApiError(401, "Invalid or expired token");
+  }
+
+  if (decoded.forceChange) {
+    throw new ApiError(403, "Password change required before accessing this resource.");
+  }
+
+  const user = await User.findById(decoded.sub).populate(
+    "companyId",
+    "companyName companyCode status subscriptionStatus subscriptionPlan enabledModules"
+  );
+
+  if (!user) {
+    throw new ApiError(401, "Invalid or expired token");
+  }
+
+  if (user.status !== USER_STATUS.ACTIVE) {
+    throw new ApiError(403, "Your account is not active");
+  }
+
+  req.user = user;
+  req.auth = buildAuthContext(user);
+
+  next();
+});
+
+export const requireAuthOrForceChange = asyncHandler(async (req, res, next) => {
+  const token = getTokenFromRequest(req);
+
+  if (!token) {
+    throw new ApiError(401, "Authentication required");
+  }
+
+  let decoded;
+
+  try {
+    decoded = verifyAccessToken(token);
+  } catch {
+    throw new ApiError(401, "Invalid or expired token");
+  }
 
   const user = await User.findById(decoded.sub).populate(
     "companyId",
@@ -42,44 +95,10 @@ export const requireAuth = asyncHandler(async (req, res, next) => {
 
   req.user = user;
   req.auth = {
-    userId: user._id,
-    role: user.role,
-    companyId: user.companyId?._id || null,
-    company: user.companyId || null,
-    isPlatformUser: Boolean(user.isPlatformUser),
-    permissions: user.permissions || [],
+    ...buildAuthContext(user),
+    forceChange: Boolean(decoded.forceChange),
   };
 
-  next();
-});
-
-export const requireAuthOrForceChange = asyncHandler(async (req, res, next) => {
-  const token = getTokenFromRequest(req);
-
-  if (!token) {
-    throw new ApiError(401, "Authentication required");
-  }
-
-  const decoded = verifyAccessToken(token);
-
-  const user = await User.findById(decoded.sub).populate(
-    "companyId",
-    "companyName companyCode status subscriptionStatus subscriptionPlan enabledModules"
-  );
-
-  if (!user) {
-    throw new ApiError(401, "Invalid or expired token");
-  }
-
-  req.user = user;
-  req.auth = {
-    userId: user._id,
-    role: user.role,
-    companyId: user.companyId?._id || null,
-    company: user.companyId || null,
-    isPlatformUser: Boolean(user.isPlatformUser),
-    permissions: user.permissions || [],
-  };
   next();
 });
 
