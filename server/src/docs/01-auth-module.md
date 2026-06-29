@@ -266,7 +266,7 @@ requirePermission
 Contains login rate limiter for:
 
 ```txt
-POST /api/auth/login
+POST /auth/login
 ```
 
 ---
@@ -301,7 +301,7 @@ Contains login, logout, refresh token, get current user, create user, forgot pas
 Auth routes mounted at:
 
 ```txt
-/api/auth
+/auth
 ```
 
 ---
@@ -326,7 +326,7 @@ This password must be changed after first login.
 Base URL:
 
 ```txt
-/api/auth
+/auth
 ```
 
 | Method | Endpoint | Auth Required | Purpose |
