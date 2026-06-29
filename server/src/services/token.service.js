@@ -8,17 +8,24 @@ const getRefreshTokenExpiryDate = () => {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 };
 
-export const generateAccessToken = (user) => {
+export const generateAccessToken = (user, overrides = {}) => {
   return jwt.sign(
     {
       sub: user._id.toString(),
       role: user.role,
-      companyId: user.companyId ? user.companyId.toString() : null,
+      companyId: user.companyId?._id
+        ? user.companyId._id.toString()
+        : user.companyId
+          ? user.companyId.toString()
+          : null,
       isPlatformUser: Boolean(user.isPlatformUser),
       permissions: user.permissions || [],
+      ...overrides,
     },
     env.JWT_ACCESS_SECRET,
-    { expiresIn: env.JWT_ACCESS_EXPIRES_IN }
+    {
+      expiresIn: overrides.expiresIn || env.JWT_ACCESS_EXPIRES_IN,
+    }
   );
 };
 
@@ -27,7 +34,11 @@ export const generateRefreshToken = (user) => {
     {
       sub: user._id.toString(),
       tokenType: "refresh",
-      companyId: user.companyId ? user.companyId.toString() : null,
+      companyId: user.companyId?._id
+        ? user.companyId._id.toString()
+        : user.companyId
+          ? user.companyId.toString()
+          : null,
       isPlatformUser: Boolean(user.isPlatformUser),
       jti: crypto.randomUUID(),
     },
@@ -51,7 +62,7 @@ export const hashToken = (token) => {
 export const createAuthSession = async ({ user, refreshToken, req }) => {
   return AuthSession.create({
     user: user._id,
-    companyId: user.companyId || null,
+    companyId: user.companyId?._id || user.companyId || null,
     isPlatformSession: Boolean(user.isPlatformUser),
     refreshTokenHash: hashToken(refreshToken),
     ipAddress: req.ip || "",
@@ -65,11 +76,7 @@ export const generateAuthTokens = async ({ user, req }) => {
   const accessToken = generateAccessToken(user);
   const refreshToken = generateRefreshToken(user);
 
-  const session = await createAuthSession({
-    user,
-    refreshToken,
-    req,
-  });
+  const session = await createAuthSession({ user, refreshToken, req });
 
   return {
     accessToken,
