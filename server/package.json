@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
+    "create-super-admin":"node src/scripts/createSuperAdmin.js",
     "create-admin": "node src/scripts/createAdmin.js",
     "test": "node --test src/tests/auth.test.js"
   },

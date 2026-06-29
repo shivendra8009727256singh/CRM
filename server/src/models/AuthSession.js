@@ -9,18 +9,49 @@ const authSessionSchema = new mongoose.Schema(
       index: true,
     },
 
+    companyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+      default: null,
+      index: true,
+    },
+
+    isPlatformSession: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
     refreshTokenHash: {
       type: String,
       required: true,
       select: false,
     },
 
-    userAgent: { type: String, default: "" },
-    ipAddress: { type: String, default: "" },
-    deviceName: { type: String, default: "Unknown Device" },
+    userAgent: {
+      type: String,
+      default: "",
+    },
 
-    isRevoked: { type: Boolean, default: false },
-    revokedAt: { type: Date, default: null },
+    ipAddress: {
+      type: String,
+      default: "",
+    },
+
+    deviceName: {
+      type: String,
+      default: "Unknown Device",
+    },
+
+    isRevoked: {
+      type: Boolean,
+      default: false,
+    },
+
+    revokedAt: {
+      type: Date,
+      default: null,
+    },
 
     expiresAt: {
       type: Date,
@@ -30,5 +61,8 @@ const authSessionSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+authSessionSchema.index({ user: 1, isRevoked: 1 });
+authSessionSchema.index({ companyId: 1, isRevoked: 1 });
 
 export const AuthSession = mongoose.model("AuthSession", authSessionSchema);

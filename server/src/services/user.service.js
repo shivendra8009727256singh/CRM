@@ -10,28 +10,68 @@ import {
   findUserByIdWithPassword,
   listUsers,
   updateUserById,
-  countActiveAdmins,
+  countActiveCompanyAdmins,
 } from "../repositories/user.repository.js";
+import { findCompanyById } from "../repositories/company.repository.js";
 
-const canCreateRole = (currentRole, targetRole) => {
-  if (currentRole === ROLES.ADMIN) {
-    return [
-      ROLES.ADMIN,
-      ROLES.HR,
-      ROLES.SUPPORT,
-      ROLES.EMPLOYEE,
-    ].includes(targetRole);
+const sameCompany = (currentUser, targetUser) => {
+  return (
+    currentUser.companyId &&
+    targetUser.companyId &&
+    currentUser.companyId.toString() === targetUser.companyId.toString()
+  );
+};
+
+const canCreateRole = (currentUser, targetRole) => {
+  if (currentUser.role === ROLES.SUPER_ADMIN) {
+    return [ROLES.COMPANY_ADMIN].includes(targetRole);
   }
 
-  if (currentRole === ROLES.HR) {
+  if (currentUser.role === ROLES.COMPANY_ADMIN) {
+    return [ROLES.HR].includes(targetRole);
+  }
+
+  if (currentUser.role === ROLES.HR) {
     return [ROLES.SUPPORT, ROLES.EMPLOYEE].includes(targetRole);
   }
 
   return false;
 };
 
+const resolveCompanyForNewUser = async (currentUser, payload) => {
+  if (currentUser.role === ROLES.SUPER_ADMIN) {
+    if (!payload.companyId) {
+      throw new ApiError(400, "companyId is required for company admin.");
+    }
+
+    const company = await findCompanyById(payload.companyId);
+
+    if (!company) {
+      throw new ApiError(404, "Company not found.");
+    }
+
+    return company._id;
+  }
+
+  if (!currentUser.companyId) {
+    throw new ApiError(400, "Current user company is missing.");
+  }
+
+  return currentUser.companyId;
+};
+
 const canManageUser = (currentUser, targetUser) => {
-  if (currentUser.role === ROLES.ADMIN) return true;
+  if (currentUser.role === ROLES.SUPER_ADMIN) {
+    return true;
+  }
+
+  if (!sameCompany(currentUser, targetUser)) {
+    return false;
+  }
+
+  if (currentUser.role === ROLES.COMPANY_ADMIN) {
+    return [ROLES.HR, ROLES.SUPPORT, ROLES.EMPLOYEE].includes(targetUser.role);
+  }
 
   if (currentUser.role === ROLES.HR) {
     return [ROLES.SUPPORT, ROLES.EMPLOYEE].includes(targetUser.role);
@@ -43,9 +83,25 @@ const canManageUser = (currentUser, targetUser) => {
 const buildVisibilityFilter = (currentUser, query) => {
   const filter = {};
 
-  if (currentUser.role === ROLES.ADMIN) {
+  if (currentUser.role === ROLES.SUPER_ADMIN) {
+    if (query.companyId) filter.companyId = query.companyId;
     if (query.role) filter.role = query.role;
+  } else if (currentUser.role === ROLES.COMPANY_ADMIN) {
+    filter.companyId = currentUser.companyId;
+    filter.role = { $in: [ROLES.HR, ROLES.SUPPORT, ROLES.EMPLOYEE] };
+
+    if (query.role) {
+      if (![ROLES.HR, ROLES.SUPPORT, ROLES.EMPLOYEE].includes(query.role)) {
+        throw new ApiError(
+          403,
+          "Company admin can only view HR, support and employee users."
+        );
+      }
+
+      filter.role = query.role;
+    }
   } else if (currentUser.role === ROLES.HR) {
+    filter.companyId = currentUser.companyId;
     filter.role = { $in: [ROLES.SUPPORT, ROLES.EMPLOYEE] };
 
     if (query.role) {
@@ -74,7 +130,7 @@ const buildVisibilityFilter = (currentUser, query) => {
 };
 
 export const createUserService = async (currentUser, payload) => {
-  if (!canCreateRole(currentUser.role, payload.role)) {
+  if (!canCreateRole(currentUser, payload.role)) {
     throw new ApiError(403, "You are not allowed to create this role.");
   }
 
@@ -84,12 +140,16 @@ export const createUserService = async (currentUser, payload) => {
     throw new ApiError(409, "Email already exists.");
   }
 
+  const companyId = await resolveCompanyForNewUser(currentUser, payload);
+
   const passwordHash = await bcrypt.hash(payload.password, env.BCRYPT_ROUNDS);
 
   const user = await createUserRecord({
+    companyId,
+    isPlatformUser: false,
     name: payload.name,
     email: payload.email,
-    mobile: payload.mobile,
+    mobile: payload.mobile || "",
     passwordHash,
     role: payload.role,
     permissions: ROLE_PERMISSIONS[payload.role] || [],
@@ -152,25 +212,25 @@ export const updateUserService = async (currentUser, id, payload) => {
 };
 
 export const deleteUserService = async (currentUser, id) => {
-  if (currentUser.role !== ROLES.ADMIN) {
-    throw new ApiError(403, "Only admin can delete users.");
-  }
-
-  if (currentUser._id.toString() === id) {
-    throw new ApiError(400, "You cannot delete your own account.");
-  }
-
   const targetUser = await findUserById(id);
 
   if (!targetUser) {
     throw new ApiError(404, "User not found.");
   }
 
-  if (targetUser.role === ROLES.ADMIN) {
-    const adminCount = await countActiveAdmins();
+  if (currentUser._id.toString() === id) {
+    throw new ApiError(400, "You cannot delete your own account.");
+  }
+
+  if (currentUser.role !== ROLES.SUPER_ADMIN) {
+    throw new ApiError(403, "Only super admin can delete users.");
+  }
+
+  if (targetUser.role === ROLES.COMPANY_ADMIN) {
+    const adminCount = await countActiveCompanyAdmins(targetUser.companyId);
 
     if (adminCount <= 1) {
-      throw new ApiError(400, "Cannot delete the last active admin.");
+      throw new ApiError(400, "Cannot delete the last active company admin.");
     }
   }
 
@@ -194,11 +254,11 @@ export const blockUserService = async (currentUser, id) => {
     throw new ApiError(403, "You are not allowed to block this user.");
   }
 
-  if (targetUser.role === ROLES.ADMIN) {
-    const adminCount = await countActiveAdmins();
+  if (targetUser.role === ROLES.COMPANY_ADMIN) {
+    const adminCount = await countActiveCompanyAdmins(targetUser.companyId);
 
     if (adminCount <= 1) {
-      throw new ApiError(400, "Cannot block the last active admin.");
+      throw new ApiError(400, "Cannot block the last active company admin.");
     }
   }
 
@@ -256,8 +316,8 @@ export const resetUserPasswordService = async (currentUser, id, password) => {
 };
 
 export const changeRoleService = async (currentUser, id, role) => {
-  if (currentUser.role !== ROLES.ADMIN) {
-    throw new ApiError(403, "Only admin can change roles.");
+  if (currentUser.role !== ROLES.SUPER_ADMIN) {
+    throw new ApiError(403, "Only super admin can change roles.");
   }
 
   if (currentUser._id.toString() === id) {
@@ -270,11 +330,11 @@ export const changeRoleService = async (currentUser, id, role) => {
     throw new ApiError(404, "User not found.");
   }
 
-  if (user.role === ROLES.ADMIN && role !== ROLES.ADMIN) {
-    const adminCount = await countActiveAdmins();
+  if (user.role === ROLES.COMPANY_ADMIN && role !== ROLES.COMPANY_ADMIN) {
+    const adminCount = await countActiveCompanyAdmins(user.companyId);
 
     if (adminCount <= 1) {
-      throw new ApiError(400, "Cannot change the role of the last active admin.");
+      throw new ApiError(400, "Cannot change the last active company admin.");
     }
   }
 
@@ -292,8 +352,8 @@ export const assignPermissionsService = async (
   id,
   permissions = []
 ) => {
-  if (currentUser.role !== ROLES.ADMIN) {
-    throw new ApiError(403, "Only admin can assign permissions.");
+  if (currentUser.role !== ROLES.SUPER_ADMIN) {
+    throw new ApiError(403, "Only super admin can assign permissions.");
   }
 
   const user = await findUserById(id);

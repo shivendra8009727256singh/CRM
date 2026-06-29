@@ -8,20 +8,17 @@ const getRefreshTokenExpiryDate = () => {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 };
 
-// Accept optional overrides (e.g. forceChange:true, expiresIn:"10m")
-// so the login controller can issue a restricted temp token when
-// forcePasswordChange is set, without creating a full session.
-export const generateAccessToken = (user, overrides = {}) => {
-  const { expiresIn, ...extraClaims } = overrides;
+export const generateAccessToken = (user) => {
   return jwt.sign(
     {
       sub: user._id.toString(),
       role: user.role,
+      companyId: user.companyId ? user.companyId.toString() : null,
+      isPlatformUser: Boolean(user.isPlatformUser),
       permissions: user.permissions || [],
-      ...extraClaims,
     },
     env.JWT_ACCESS_SECRET,
-    { expiresIn: expiresIn || env.JWT_ACCESS_EXPIRES_IN }
+    { expiresIn: env.JWT_ACCESS_EXPIRES_IN }
   );
 };
 
@@ -30,6 +27,8 @@ export const generateRefreshToken = (user) => {
     {
       sub: user._id.toString(),
       tokenType: "refresh",
+      companyId: user.companyId ? user.companyId.toString() : null,
+      isPlatformUser: Boolean(user.isPlatformUser),
       jti: crypto.randomUUID(),
     },
     env.JWT_REFRESH_SECRET,
@@ -50,23 +49,27 @@ export const hashToken = (token) => {
 };
 
 export const createAuthSession = async ({ user, refreshToken, req }) => {
-  const session = await AuthSession.create({
+  return AuthSession.create({
     user: user._id,
+    companyId: user.companyId || null,
+    isPlatformSession: Boolean(user.isPlatformUser),
     refreshTokenHash: hashToken(refreshToken),
     ipAddress: req.ip || "",
     userAgent: req.get("user-agent") || "",
     deviceName: req.get("user-agent") || "Unknown Device",
     expiresAt: getRefreshTokenExpiryDate(),
   });
-
-  return session;
 };
 
 export const generateAuthTokens = async ({ user, req }) => {
   const accessToken = generateAccessToken(user);
   const refreshToken = generateRefreshToken(user);
 
-  const session = await createAuthSession({ user, refreshToken, req });
+  const session = await createAuthSession({
+    user,
+    refreshToken,
+    req,
+  });
 
   return {
     accessToken,
@@ -84,9 +87,7 @@ export const rotateRefreshToken = async ({ oldRefreshToken, user, req }) => {
     isRevoked: false,
   }).select("+refreshTokenHash");
 
-  if (!session) {
-    return null;
-  }
+  if (!session) return null;
 
   session.isRevoked = true;
   session.revokedAt = new Date();
@@ -99,14 +100,26 @@ export const revokeSession = async ({ refreshToken }) => {
   if (!refreshToken) return;
 
   await AuthSession.findOneAndUpdate(
-    { refreshTokenHash: hashToken(refreshToken), isRevoked: false },
-    { isRevoked: true, revokedAt: new Date() }
+    {
+      refreshTokenHash: hashToken(refreshToken),
+      isRevoked: false,
+    },
+    {
+      isRevoked: true,
+      revokedAt: new Date(),
+    }
   );
 };
 
 export const revokeAllUserSessions = async (userId) => {
   await AuthSession.updateMany(
-    { user: userId, isRevoked: false },
-    { isRevoked: true, revokedAt: new Date() }
+    {
+      user: userId,
+      isRevoked: false,
+    },
+    {
+      isRevoked: true,
+      revokedAt: new Date(),
+    }
   );
 };

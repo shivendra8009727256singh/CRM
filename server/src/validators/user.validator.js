@@ -2,52 +2,38 @@ import Joi from "joi";
 import { ROLES, USER_STATUS } from "../constants/roles.js";
 import { PERMISSIONS } from "../constants/permissions.js";
 
+const password = Joi.string().min(8).max(32).required();
 
 export const createUserSchema = Joi.object({
-  name: Joi.string().trim().min(2).max(100).required(),
+  name: Joi.string().trim().min(2).max(120).required(),
 
-  email: Joi.string().email().lowercase().required(),
+  email: Joi.string().email().lowercase().trim().required(),
 
-  mobile: Joi.string()
-    .pattern(/^[0-9]{10}$/)
-    .required(),
+  mobile: Joi.string().trim().allow("", null),
 
-  password: Joi.string()
-    .min(8)
-    .max(30)
-    .required(),
+  password,
 
   role: Joi.string()
-    .valid(
-      ROLES.ADMIN,
-      ROLES.HR,
-      ROLES.SUPPORT,
-      ROLES.EMPLOYEE
-    )
+    .valid(ROLES.COMPANY_ADMIN, ROLES.HR, ROLES.SUPPORT, ROLES.EMPLOYEE)
     .required(),
 
-  employeeCode: Joi.string()
-    .trim()
-    .allow("", null),
+  companyId: Joi.string().hex().length(24).allow(null),
 
-  department: Joi.string()
-    .trim()
-    .allow("", null),
+  employeeCode: Joi.string().trim().uppercase().allow("", null),
 
-  designation: Joi.string()
-    .trim()
-    .allow("", null),
+  department: Joi.string().trim().allow("", null),
+
+  designation: Joi.string().trim().allow("", null),
 });
 
 export const updateUserSchema = Joi.object({
-  name: Joi.string().trim().min(2).max(100),
+  name: Joi.string().trim().min(2).max(120),
 
-  mobile: Joi.string()
-    .pattern(/^[0-9]{10}$/),
+  mobile: Joi.string().trim().allow("", null),
 
-  department: Joi.string(),
+  department: Joi.string().trim().allow("", null),
 
-  designation: Joi.string(),
+  designation: Joi.string().trim().allow("", null),
 
   status: Joi.string().valid(
     USER_STATUS.ACTIVE,
@@ -58,33 +44,13 @@ export const updateUserSchema = Joi.object({
 
 export const changeRoleSchema = Joi.object({
   role: Joi.string()
-    .valid(
-      ROLES.ADMIN,
-      ROLES.HR,
-      ROLES.SUPPORT,
-      ROLES.EMPLOYEE
-    )
+    .valid(ROLES.COMPANY_ADMIN, ROLES.HR, ROLES.SUPPORT, ROLES.EMPLOYEE)
     .required(),
 });
 
 export const resetPasswordSchema = Joi.object({
-  password: Joi.string()
-    .min(8)
-    .max(30)
-    .required(),
+  password,
 });
-
-// export const assignPermissionsSchema = Joi.object({
-//   permissions: Joi.array()
-//     .items(
-//       Joi.string().valid(...Object.values(PERMISSIONS))
-//     )
-//     .required()
-//     .messages({
-//       "array.base": "Permissions must be an array.",
-//       "any.only": "One or more permissions are invalid.",
-//     }),
-// });
 
 export const assignPermissionsSchema = Joi.object({
   permissions: Joi.array()

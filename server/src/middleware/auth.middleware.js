@@ -25,25 +25,12 @@ export const requireAuth = asyncHandler(async (req, res, next) => {
     throw new ApiError(401, "Authentication required");
   }
 
-  // (auth middleware): verifyAccessToken throws JsonWebTokenError
-  // or TokenExpiredError on bad/expired tokens — catch and convert to 401.
-  let decoded;
-  try {
-    decoded = verifyAccessToken(token);
-  } catch {
-    throw new ApiError(401, "Invalid or expired token");
-  }
+  const decoded = verifyAccessToken(token);
 
-  // Block restricted forceChange tokens from accessing any
-  // getting a full session.
-  if (decoded.forceChange) {
-    throw new ApiError(
-      403,
-      "You must change your password before accessing this resource."
-    );
-  }
-
-  const user = await User.findById(decoded.sub);
+  const user = await User.findById(decoded.sub).populate(
+    "companyId",
+    "companyName companyCode status subscriptionStatus subscriptionPlan enabledModules"
+  );
 
   if (!user) {
     throw new ApiError(401, "Invalid or expired token");
@@ -54,10 +41,18 @@ export const requireAuth = asyncHandler(async (req, res, next) => {
   }
 
   req.user = user;
+  req.auth = {
+    userId: user._id,
+    role: user.role,
+    companyId: user.companyId?._id || null,
+    company: user.companyId || null,
+    isPlatformUser: Boolean(user.isPlatformUser),
+    permissions: user.permissions || [],
+  };
+
   next();
 });
 
-// Separate middleware for the change-password route that ACCEPTS forceChange tokens.
 export const requireAuthOrForceChange = asyncHandler(async (req, res, next) => {
   const token = getTokenFromRequest(req);
 
@@ -65,24 +60,26 @@ export const requireAuthOrForceChange = asyncHandler(async (req, res, next) => {
     throw new ApiError(401, "Authentication required");
   }
 
-  let decoded;
-  try {
-    decoded = verifyAccessToken(token);
-  } catch {
-    throw new ApiError(401, "Invalid or expired token");
-  }
+  const decoded = verifyAccessToken(token);
 
-  const user = await User.findById(decoded.sub);
+  const user = await User.findById(decoded.sub).populate(
+    "companyId",
+    "companyName companyCode status subscriptionStatus subscriptionPlan enabledModules"
+  );
 
   if (!user) {
     throw new ApiError(401, "Invalid or expired token");
   }
 
-  if (user.status !== USER_STATUS.ACTIVE) {
-    throw new ApiError(403, "Your account is not active");
-  }
-
   req.user = user;
+  req.auth = {
+    userId: user._id,
+    role: user.role,
+    companyId: user.companyId?._id || null,
+    company: user.companyId || null,
+    isPlatformUser: Boolean(user.isPlatformUser),
+    permissions: user.permissions || [],
+  };
   next();
 });
 

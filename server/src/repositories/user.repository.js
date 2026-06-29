@@ -1,9 +1,10 @@
 import { User } from "../models/User.js";
 import { ROLES, USER_STATUS } from "../constants/roles.js";
 
-export const countActiveAdmins = async () => {
+export const countActiveCompanyAdmins = async (companyId) => {
   return User.countDocuments({
-    role: ROLES.ADMIN,
+    companyId,
+    role: ROLES.COMPANY_ADMIN,
     status: USER_STATUS.ACTIVE,
   });
 };

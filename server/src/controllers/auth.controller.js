@@ -72,7 +72,18 @@ export const login = asyncHandler(async (req, res) => {
     throw new ApiError(400, error.details[0].message);
   }
 
-  const user = await User.findOne({ email: value.email }).select("+passwordHash");
+  const user = await User.findOne({ email: value.email }).select("+passwordHash").populate(
+    "companyId",
+    "companyName companyCode status subscriptionStatus subscriptionPlan enabledModules"
+  );
+
+  if (
+    user.role !== ROLES.SUPER_ADMIN &&
+    user.companyId &&
+    user.companyId.status === "suspended"
+  ) {
+    throw new ApiError(403, "Your company account is suspended");
+  }
 
   if (!user) {
     await auditLogin({
@@ -321,7 +332,16 @@ export const refreshToken = asyncHandler(async (req, res) => {
 
 // ─── GET ME ───────────────────────────────────────────────────────────────────
 export const getMe = asyncHandler(async (req, res) => {
-  res.status(200).json(new ApiResponse(200, sanitizeUser(req.user), "User fetched"));
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        user: req.user.toSafeObject(),
+        company: req.auth?.company || null,
+      },
+      "User fetched"
+    )
+  );
 });
 
 // ─── CREATE USER (admin only) ─────────────────────────────────────────────────

@@ -12,10 +12,7 @@ import {
   assignPermissions,
 } from "../controllers/user.controller.js";
 
-import {
-  requireAuth,
-  requirePermission,
-} from "../middleware/auth.middleware.js";
+import { requireAuth, requirePermission } from "../middleware/auth.middleware.js";
 
 import { PERMISSIONS } from "../constants/permissions.js";
 
@@ -23,11 +20,7 @@ const router = Router();
 
 router.use(requireAuth);
 
-router.post(
-  "/",
-  requirePermission(PERMISSIONS.USER_CREATE),
-  createUser
-);
+router.post("/", requirePermission(PERMISSIONS.USER_CREATE),createUser);
 
 router.get(
   "/",
