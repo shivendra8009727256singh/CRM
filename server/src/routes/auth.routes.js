@@ -42,7 +42,7 @@ router.post("/change-password", requireAuthOrForceChange, changePassword);
 router.post(
   "/admin/unlock-user/:userId",
   requireAuth,
-  requireRole(ROLES.ADMIN),
+  requireRole(ROLES.SUPER_ADMIN, ROLES.COMPANY_ADMIN),
   adminUnlockUser
 );
 
