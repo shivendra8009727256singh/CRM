@@ -15,6 +15,7 @@ import recruitmentRoutes from "./routes/recruitment.routes.js";
 import leaveRoutes from "./routes/leave.routes.js";
 import eventRoutes from "./routes/event.routes.js";
 import holidayRoutes from "./routes/holiday.routes.js";
+import meetingRoutes from "./routes/meeting.routes.js";
 
 
 const app = express();
@@ -74,6 +75,7 @@ app.use("/hr/recruitment", recruitmentRoutes);
 app.use("/hr/leave", leaveRoutes);
 app.use("/hr/events", eventRoutes);
 app.use("/hr/holidays", holidayRoutes);
+app.use("/hr/meetings", meetingRoutes);
 
 app.use(notFound);
 
