@@ -10,6 +10,12 @@ import { notFound, errorHandler } from "./middleware/error.middleware.js";
 import userRoutes from "./routes/user.routes.js";
 import companyRoutes from "./routes/company.routes.js";
 import companySettingsRoutes from "./routes/companySettings.routes.js";
+import employeeRoutes from "./routes/employee.routes.js";
+import recruitmentRoutes from "./routes/recruitment.routes.js";
+import leaveRoutes from "./routes/leave.routes.js";
+import eventRoutes from "./routes/event.routes.js";
+import holidayRoutes from "./routes/holiday.routes.js";
+
 
 const app = express();
 
@@ -63,7 +69,11 @@ app.use("/auth", authRoutes);
 app.use("/users", userRoutes);
 app.use("/companies", companyRoutes);
 app.use("/company-settings", companySettingsRoutes);
-
+app.use("/hr/employees", employeeRoutes);
+app.use("/hr/recruitment", recruitmentRoutes);
+app.use("/hr/leave", leaveRoutes);
+app.use("/hr/events", eventRoutes);
+app.use("/hr/holidays", holidayRoutes);
 
 app.use(notFound);
 

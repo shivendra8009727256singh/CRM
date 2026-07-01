@@ -1,0 +1,165 @@
+import { Router } from "express";
+
+import {
+  createShift,
+  getShifts,
+  updateShift,
+  deleteShift,
+
+  createAttendancePolicy,
+  getAttendancePolicies,
+  updateAttendancePolicy,
+  deleteAttendancePolicy,
+
+  checkIn,
+  checkOut,
+  markManualAttendance,
+  getAttendance,
+  updateAttendanceStatus,
+
+  createRegularization,
+  getRegularizations,
+  updateRegularizationStatus,
+
+  getAttendanceDashboard,
+  getMonthlyAttendance,
+} from "../controllers/attendance.controller.js";
+
+import {
+  requireAuth,
+  requirePermission,
+} from "../middleware/auth.middleware.js";
+
+import { requireTenant } from "../middleware/tenant.middleware.js";
+
+import { PERMISSIONS } from "../constants/permissions.js";
+
+const router = Router();
+
+router.use(requireAuth);
+router.use(requireTenant);
+
+/* ======================================================
+   DASHBOARD
+====================================================== */
+
+router.get(
+  "/dashboard",
+  requirePermission(PERMISSIONS.EMPLOYEE_READ),
+  getAttendanceDashboard
+);
+
+/* ======================================================
+   SHIFT
+====================================================== */
+
+router.post(
+  "/shifts",
+  requirePermission(PERMISSIONS.EMPLOYEE_CREATE),
+  createShift
+);
+
+router.get(
+  "/shifts",
+  requirePermission(PERMISSIONS.EMPLOYEE_READ),
+  getShifts
+);
+
+router.patch(
+  "/shifts/:id",
+  requirePermission(PERMISSIONS.EMPLOYEE_UPDATE),
+  updateShift
+);
+
+router.delete(
+  "/shifts/:id",
+  requirePermission(PERMISSIONS.EMPLOYEE_DELETE),
+  deleteShift
+);
+
+/* ======================================================
+   ATTENDANCE POLICY
+====================================================== */
+
+router.post(
+  "/policies",
+  requirePermission(PERMISSIONS.EMPLOYEE_CREATE),
+  createAttendancePolicy
+);
+
+router.get(
+  "/policies",
+  requirePermission(PERMISSIONS.EMPLOYEE_READ),
+  getAttendancePolicies
+);
+
+router.patch(
+  "/policies/:id",
+  requirePermission(PERMISSIONS.EMPLOYEE_UPDATE),
+  updateAttendancePolicy
+);
+
+router.delete(
+  "/policies/:id",
+  requirePermission(PERMISSIONS.EMPLOYEE_DELETE),
+  deleteAttendancePolicy
+);
+
+/* ======================================================
+   DAILY ATTENDANCE
+====================================================== */
+
+router.post("/check-in", checkIn);
+
+router.post("/check-out", checkOut);
+
+router.post(
+  "/manual",
+  requirePermission(PERMISSIONS.EMPLOYEE_UPDATE),
+  markManualAttendance
+);
+
+router.get(
+  "/records",
+  requirePermission(PERMISSIONS.EMPLOYEE_READ),
+  getAttendance
+);
+
+router.patch(
+  "/records/:id/status",
+  requirePermission(PERMISSIONS.EMPLOYEE_UPDATE),
+  updateAttendanceStatus
+);
+
+/* ======================================================
+   REGULARIZATION
+====================================================== */
+
+router.post(
+  "/regularizations",
+  createRegularization
+);
+
+router.get(
+  "/regularizations",
+  requirePermission(PERMISSIONS.EMPLOYEE_READ),
+  getRegularizations
+);
+
+router.patch(
+  "/regularizations/:id/status",
+  requirePermission(PERMISSIONS.EMPLOYEE_UPDATE),
+  updateRegularizationStatus
+);
+
+/* ======================================================
+   REPORTS
+====================================================== */
+
+router.get(
+  "/monthly/:employeeId",
+  requirePermission(PERMISSIONS.EMPLOYEE_READ),
+  getMonthlyAttendance
+);
+
+export default router;

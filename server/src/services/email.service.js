@@ -130,3 +130,48 @@ export const sendUnlockEmail = async ({ to, name, unlockUrl }) => {
     required: true,
   });
 };
+
+export const sendWelcomeEmployeeEmail = async ({
+  to,
+  name,
+  employeeCode,
+  temporaryPassword,
+  loginUrl,
+}) => {
+  return sendEmail({
+    to,
+    subject: `${env.APP_NAME} - Welcome to the HR Portal`,
+    text: `Hello ${name}, your employee account has been created. Employee Code: ${employeeCode}. Login: ${loginUrl}. Temporary Password: ${temporaryPassword}`,
+    html: `<!DOCTYPE html>
+<html>
+<body style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#333">
+  <h2 style="color:#1a1a1a">Welcome to ${env.APP_NAME}</h2>
+  <p>Hello ${name},</p>
+  <p>Your employee account has been created successfully.</p>
+
+  <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:20px 0">
+    <p><strong>Employee Code:</strong> ${employeeCode}</p>
+    <p><strong>Login URL:</strong> <a href="${loginUrl}">${loginUrl}</a></p>
+    <p><strong>Temporary Password:</strong> ${temporaryPassword}</p>
+  </div>
+
+  <p>Please login and change your password immediately.</p>
+
+  <p style="margin:24px 0">
+    <a href="${loginUrl}"
+       style="background:#16A34A;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">
+      Login Now
+    </a>
+  </p>
+
+  <p style="color:#666;font-size:13px">
+    If you did not expect this email, please contact your HR team.
+  </p>
+
+  <hr style="border:none;border-top:1px solid #eee;margin:24px 0"/>
+  <p style="color:#999;font-size:12px">${env.APP_NAME}</p>
+</body>
+</html>`,
+    required: false,
+  });
+};
