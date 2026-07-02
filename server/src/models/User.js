@@ -169,11 +169,11 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-userSchema.pre("validate", function (next) {
+userSchema.pre("validate", async function () {
   if (this.role === ROLES.SUPER_ADMIN) {
     this.companyId = null;
     this.isPlatformUser = true;
-    return next();
+    return;
   }
 
   this.isPlatformUser = false;
@@ -185,16 +185,14 @@ userSchema.pre("validate", function (next) {
   next();
 });
 
-userSchema.pre("save", function (next) {
+userSchema.pre("save", async function () {
   if (!this.permissions || this.permissions.length === 0) {
     this.permissions = ROLE_PERMISSIONS[this.role] || [];
   }
-
-  next();
 });
 
 userSchema.methods.setPassword = async function (password) {
-  this.passwordHash = await bcrypt.hash(password, 12);
+  this.passwordHash = await bcrypt.hash(password, env.BCRYPT_ROUNDS);
   this.passwordChangedAt = new Date();
 };
 
