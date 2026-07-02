@@ -1,7 +1,9 @@
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
+import { env } from "../config/env.js";
 import mongoose from "mongoose";
 import { ROLE_PERMISSIONS, ROLES, USER_STATUS } from "../constants/roles.js";
+
 
 const userSchema = new mongoose.Schema(
   {
