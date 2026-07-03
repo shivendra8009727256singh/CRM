@@ -436,4 +436,9 @@ const offerSalarySchema = Joi.object({
     salaryStructureId: objectId.allow(null),
   
     sendWelcomeEmail: Joi.boolean().default(true),
-  });
+});
+
+export const updateOfferSchema = createOfferSchema.fork(
+  ["candidateId", "jobOpeningId", "joiningDate", "offerDate", "validTill"],
+  (field) => field.optional()
+);
