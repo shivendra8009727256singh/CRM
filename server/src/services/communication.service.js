@@ -64,7 +64,11 @@ const ensureRecipientBelongsToCompany = async (currentUser, recipientUserId) => 
   return recipient;
 };
 
-const ensureSameCompanyRecord = (currentUser, record, message = "Record not found.") => {
+const ensureSameCompanyRecord = (
+  currentUser,
+  record,
+  message = "Record not found."
+) => {
   if (!record) {
     throw new ApiError(404, message);
   }
@@ -80,21 +84,29 @@ const ensureSameCompanyRecord = (currentUser, record, message = "Record not foun
   }
 };
 
+const resolveCompanyIdForCommunication = (currentUser, recipient) => {
+  if (currentUser.role === ROLES.SUPER_ADMIN) {
+    if (!recipient.companyId) {
+      throw new ApiError(400, "Recipient has no company assigned.");
+    }
+
+    return recipient.companyId;
+  }
+
+  return getCompanyId(currentUser);
+};
+
 /* ================= MESSAGES ================= */
 
 export const sendMessageService = async (currentUser, payload) => {
   ensureCommunicationAccess(currentUser);
 
-  await ensureRecipientBelongsToCompany(currentUser, payload.recipientUserId);
+  const recipient = await ensureRecipientBelongsToCompany(
+    currentUser,
+    payload.recipientUserId
+  );
 
-  const companyId =
-    currentUser.role === ROLES.SUPER_ADMIN
-      ? currentUser.companyId || null
-      : getCompanyId(currentUser);
-
-  if (!companyId && currentUser.role !== ROLES.SUPER_ADMIN) {
-    throw new ApiError(403, "Company context missing.");
-  }
+  const companyId = resolveCompanyIdForCommunication(currentUser, recipient);
 
   const message = await createMessageRecord({
     companyId,
@@ -195,12 +207,12 @@ export const markMessageReadService = async (currentUser, id) => {
 export const sendNotificationService = async (currentUser, payload) => {
   ensureCommunicationAccess(currentUser);
 
-  await ensureRecipientBelongsToCompany(currentUser, payload.recipientUserId);
+  const recipient = await ensureRecipientBelongsToCompany(
+    currentUser,
+    payload.recipientUserId
+  );
 
-  const companyId =
-    currentUser.role === ROLES.SUPER_ADMIN
-      ? currentUser.companyId || null
-      : getCompanyId(currentUser);
+  const companyId = resolveCompanyIdForCommunication(currentUser, recipient);
 
   const notification = await createNotificationRecord({
     companyId,
