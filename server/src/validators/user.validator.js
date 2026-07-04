@@ -17,7 +17,9 @@ export const createUserSchema = Joi.object({
     .valid(ROLES.COMPANY_ADMIN, ROLES.HR, ROLES.SUPPORT, ROLES.EMPLOYEE)
     .required(),
 
-  companyId: Joi.string().hex().length(24).allow(null),
+    companyId: Joi.string().hex().length(24).allow(null),
+
+    companyCode: Joi.string().trim().uppercase().allow("", null),
 
   employeeCode: Joi.string().trim().uppercase().allow("", null),
 
