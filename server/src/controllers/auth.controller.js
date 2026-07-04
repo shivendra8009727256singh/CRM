@@ -27,6 +27,7 @@ import {
   changePasswordSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  resendVerificationSchema,
 } from "../validators/auth.validator.js";
 
 const cookieOptions = {
@@ -504,6 +505,56 @@ export const verifyEmail = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, null, "Email verified successfully"));
 });
 
+export const resendVerificationEmail = asyncHandler(async (req, res) => {
+  const { value, error } = resendVerificationSchema.validate(req.body);
+
+  if (error) {
+    throw new ApiError(400, error.details[0].message);
+  }
+
+  const user = await User.findOne({ email: value.email });
+
+  if (!user) {
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          null,
+          "If this email exists and is not verified, a verification link has been sent."
+        )
+      );
+  }
+
+  if (user.isEmailVerified) {
+    return res
+      .status(200)
+      .json(new ApiResponse(200, null, "Email is already verified."));
+  }
+
+  const verificationToken = user.createSecureToken(
+    "emailVerificationTokenHash",
+    "emailVerificationExpiresAt",
+    60 * 24
+  );
+
+  await user.save();
+
+  const verifyUrl = `${env.CLIENT_ORIGIN}/verify-email?token=${verificationToken}`;
+
+  await sendVerificationEmail({
+    to: user.email,
+    name: user.name,
+    verifyUrl,
+  });
+
+  res
+    .status(200)
+    .json(new ApiResponse(200, null, "Verification email sent successfully."));
+});
+
+
+
 // ─── UNLOCK ACCOUNT (via email token link) ────────────────────────────────────
 export const unlockAccount = asyncHandler(async (req, res) => {
   const token = req.query.token || req.body.token;
@@ -622,3 +673,4 @@ export const revokeMySession = asyncHandler(async (req, res) => {
 
   res.status(200).json(new ApiResponse(200, null, "Session revoked"));
 });
+
