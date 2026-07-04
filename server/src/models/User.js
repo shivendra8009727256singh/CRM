@@ -181,10 +181,8 @@ userSchema.pre("validate", async function () {
   this.isPlatformUser = false;
 
   if (!this.companyId) {
-    return next(new Error("Company is required for non-platform users."));
+    throw new Error("Company is required for non-platform users.");
   }
-
-  next();
 });
 
 userSchema.pre("save", async function () {
