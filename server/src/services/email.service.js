@@ -97,7 +97,7 @@ export const sendVerificationEmail = async ({ to, name, verifyUrl }) => {
   <p style="color:#999;font-size:12px">${env.APP_NAME}</p>
 </body>
 </html>`,
-    required: false,
+    required: true,
   });
 };
 
