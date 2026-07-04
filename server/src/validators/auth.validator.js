@@ -1,4 +1,5 @@
 import Joi from "joi";
+import { ROLES } from "../constants/roles.js";
 
 /**
  * Password Policy
@@ -47,9 +48,14 @@ export const createUserSchema = Joi.object({
   password,
 
   role: Joi.string()
-    .valid("admin", "hr", "support", "employee")
-    .required(),
-
+  .valid(
+    ROLES.SUPER_ADMIN,
+    ROLES.COMPANY_ADMIN,
+    ROLES.HR,
+    ROLES.SUPPORT,
+    ROLES.EMPLOYEE
+  )
+  .required(),
   department: Joi.string().allow("", null),
 
   designation: Joi.string().allow("", null),
