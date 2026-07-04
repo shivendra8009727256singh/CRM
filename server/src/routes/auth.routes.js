@@ -9,6 +9,7 @@ import {
   forgotPassword,
   resetPassword,
   verifyEmail,
+  resendVerificationEmail,
   unlockAccount,
   adminUnlockUser,
   getMySessions,
@@ -29,7 +30,9 @@ router.post("/refresh-token", refreshToken);
 router.post("/forgot-password", forgotPassword);
 router.post("/reset-password", resetPassword);
 router.post("/verify-email", verifyEmail);
+router.post("/resend-verification", resendVerificationEmail);
 router.post("/unlock-account", unlockAccount);
+
 
 router.get("/me", requireAuth, getMe);
 router.post("/logout", requireAuth, logout);
