@@ -1,12 +1,16 @@
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
+
 import { env } from "../config/env.js";
 import { ApiError } from "../utils/apiError.js";
+
 import {
   COMPANY_STATUS,
   ROLE_PERMISSIONS,
   ROLES,
   USER_STATUS,
 } from "../constants/roles.js";
+
 import {
   createCompanyRecord,
   deleteCompanyById,
@@ -16,15 +20,36 @@ import {
   listCompanies,
   updateCompanyById,
 } from "../repositories/company.repository.js";
+
 import {
   createUserRecord,
+  deleteUserById,
   findUserByEmail,
 } from "../repositories/user.repository.js";
+
+import { sendVerificationEmail } from "./email.service.js";
 
 const ensureSuperAdmin = (currentUser) => {
   if (currentUser.role !== ROLES.SUPER_ADMIN) {
     throw new ApiError(403, "Only super admin can perform this action.");
   }
+};
+
+const createEmailVerificationToken = () => {
+  const token = crypto.randomBytes(32).toString("hex");
+
+  const tokenHash = crypto
+    .createHash("sha256")
+    .update(token)
+    .digest("hex");
+
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+  return {
+    token,
+    tokenHash,
+    expiresAt,
+  };
 };
 
 export const createCompanyService = async (currentUser, payload) => {
@@ -60,6 +85,7 @@ export const getCompaniesService = async (currentUser, query = {}) => {
   const filter = {};
 
   if (query.status) filter.status = query.status;
+
   if (query.subscriptionStatus) {
     filter.subscriptionStatus = query.subscriptionStatus;
   }
@@ -162,6 +188,8 @@ export const createCompanyAdminService = async (
 
   const passwordHash = await bcrypt.hash(payload.password, env.BCRYPT_ROUNDS);
 
+  const verification = createEmailVerificationToken();
+
   const user = await createUserRecord({
     companyId: company._id,
     isPlatformUser: false,
@@ -178,11 +206,35 @@ export const createCompanyAdminService = async (
     designation: payload.designation || "Company Admin",
 
     status: USER_STATUS.ACTIVE,
+
+    // User must verify email before login.
     isEmailVerified: false,
-    forcePasswordChange: true,
+    emailVerificationTokenHash: verification.tokenHash,
+    emailVerificationExpiresAt: verification.expiresAt,
+
+    // Direct login after email verification.
+    // If you want password change first, change this to true.
+    forcePasswordChange: false,
 
     createdBy: currentUser._id,
   });
+
+  const verifyUrl = `${env.CLIENT_ORIGIN}/verify-email?token=${verification.token}`;
+
+  try {
+    await sendVerificationEmail({
+      to: user.email,
+      name: user.name,
+      verifyUrl,
+    });
+  } catch (error) {
+    await deleteUserById(user._id);
+
+    throw new ApiError(
+      502,
+      `Company admin was not created because verification email could not be sent. Please check SMTP settings. ${error.message}`
+    );
+  }
 
   return user.toSafeObject();
 };
