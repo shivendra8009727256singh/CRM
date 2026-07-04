@@ -13,6 +13,7 @@ import {
   countActiveCompanyAdmins,
 } from "../repositories/user.repository.js";
 import { findCompanyById } from "../repositories/company.repository.js";
+import { findCompanyByCode } from "../repositories/company.repository.js";
 
 const sameCompany = (currentUser, targetUser) => {
   return (
@@ -38,13 +39,21 @@ const canCreateRole = (currentUser, targetRole) => {
   return false;
 };
 
-const resolveCompanyForNewUser = async (currentUser, payload) => {
+cconst resolveCompanyForNewUser = async (currentUser, payload) => {
   if (currentUser.role === ROLES.SUPER_ADMIN) {
-    if (!payload.companyId) {
-      throw new ApiError(400, "companyId is required for company admin.");
+    if (!payload.companyId && !payload.companyCode) {
+      throw new ApiError(400, "companyId or companyCode is required.");
     }
 
-    const company = await findCompanyById(payload.companyId);
+    let company = null;
+
+    if (payload.companyId) {
+      company = await findCompanyById(payload.companyId);
+    }
+
+    if (!company && payload.companyCode) {
+      company = await findCompanyByCode(payload.companyCode);
+    }
 
     if (!company) {
       throw new ApiError(404, "Company not found.");
