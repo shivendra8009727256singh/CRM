@@ -39,7 +39,7 @@ const canCreateRole = (currentUser, targetRole) => {
   return false;
 };
 
-cconst resolveCompanyForNewUser = async (currentUser, payload) => {
+const resolveCompanyForNewUser = async (currentUser, payload) => {
   if (currentUser.role === ROLES.SUPER_ADMIN) {
     if (!payload.companyId && !payload.companyCode) {
       throw new ApiError(400, "companyId or companyCode is required.");
