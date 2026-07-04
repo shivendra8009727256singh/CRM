@@ -1,9 +1,9 @@
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
-import { env } from "../config/env.js";
 import mongoose from "mongoose";
-import { ROLE_PERMISSIONS, ROLES, USER_STATUS } from "../constants/roles.js";
 
+import { env } from "../config/env.js";
+import { ROLE_PERMISSIONS, ROLES, USER_STATUS } from "../constants/roles.js";
 
 const userSchema = new mongoose.Schema(
   {
@@ -171,7 +171,12 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-userSchema.pre("validate", async function () {
+/**
+ * IMPORTANT FIX:
+ * Do not call next() here unless next is declared.
+ * This hook is synchronous, so use this.invalidate() instead.
+ */
+userSchema.pre("validate", function () {
   if (this.role === ROLES.SUPER_ADMIN) {
     this.companyId = null;
     this.isPlatformUser = true;
@@ -181,11 +186,11 @@ userSchema.pre("validate", async function () {
   this.isPlatformUser = false;
 
   if (!this.companyId) {
-    throw new Error("Company is required for non-platform users.");
+    this.invalidate("companyId", "Company is required for non-platform users.");
   }
 });
 
-userSchema.pre("save", async function () {
+userSchema.pre("save", function () {
   if (!this.permissions || this.permissions.length === 0) {
     this.permissions = ROLE_PERMISSIONS[this.role] || [];
   }
