@@ -14,6 +14,26 @@ import {
 } from "../repositories/user.repository.js";
 import { findCompanyById } from "../repositories/company.repository.js";
 import { findCompanyByCode } from "../repositories/company.repository.js";
+import crypto from "crypto";
+import { sendVerificationEmail } from "./email.service.js";
+
+
+const createEmailVerificationToken = () => {
+  const token = crypto.randomBytes(32).toString("hex");
+
+  const tokenHash = crypto
+    .createHash("sha256")
+    .update(token)
+    .digest("hex");
+
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+  return {
+    token,
+    tokenHash,
+    expiresAt,
+  };
+};
 
 const sameCompany = (currentUser, targetUser) => {
   return (
@@ -153,6 +173,8 @@ export const createUserService = async (currentUser, payload) => {
 
   const passwordHash = await bcrypt.hash(payload.password, env.BCRYPT_ROUNDS);
 
+  const verification = createEmailVerificationToken();
+
   const user = await createUserRecord({
     companyId,
     isPlatformUser: false,
@@ -166,10 +188,34 @@ export const createUserService = async (currentUser, payload) => {
     department: payload.department || "",
     designation: payload.designation || "",
     status: USER_STATUS.ACTIVE,
+
+    // user must verify email before login
     isEmailVerified: false,
-    forcePasswordChange: true,
+    emailVerificationTokenHash: verification.tokenHash,
+    emailVerificationExpiresAt: verification.expiresAt,
+
+    // keep false if you want login directly after verification
+    forcePasswordChange: false,
+
     createdBy: currentUser._id,
   });
+
+  const verifyUrl = `${env.CLIENT_ORIGIN}/verify-email?token=${verification.token}`;
+
+  try {
+    await sendVerificationEmail({
+      to: user.email,
+      name: user.name,
+      verifyUrl,
+    });
+  } catch (error) {
+    await deleteUserById(user._id);
+
+    throw new ApiError(
+      502,
+      `User was not created because verification email could not be sent. Please check SMTP settings. ${error.message}`
+    );
+  }
 
   return user.toSafeObject();
 };
