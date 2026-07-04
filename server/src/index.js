@@ -6,37 +6,59 @@ import { connectDB } from "./config/db.js";
 import { initSocket } from "./socket/socket.js";
 
 const startServer = async () => {
-  await connectDB();
+  try {
+    console.clear();
 
-  const httpServer = http.createServer(app);
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    console.log("🚀 Starting OPAS CRM Backend...");
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
-  initSocket(httpServer);
+    // Connect Database
+    console.log("📦 Connecting to MongoDB...");
+    await connectDB();
+    console.log("✅ MongoDB Connected");
 
-  httpServer.listen(env.PORT, () => {
-    console.log("");
-    console.log("========================");
-    console.log("OPAS CRM Backend");
-    console.log(`Environment : ${env.NODE_ENV}`);
-    console.log(`Port : ${env.PORT}`);
-    console.log("Socket.IO : Enabled");
-    console.log("========================");
-    console.log("");
-  });
+    // Create HTTP Server
+    const httpServer = http.createServer(app);
 
-  httpServer.on("error", (error) => {
-    if (error.code === "EADDRINUSE") {
-      console.error(`Port ${env.PORT} is already in use.`);
-    } else {
-      console.error("Server startup failed");
-      console.error(error);
-    }
+    // Initialize Socket.IO
+    initSocket(httpServer);
+    console.log("🔌 Socket.IO Initialized");
 
+    // Start Server
+    httpServer.listen(env.PORT, () => {
+      console.log("");
+      console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+      console.log("🎉 OPAS CRM Backend Started Successfully");
+      console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+      console.log(`🌍 Environment : ${env.NODE_ENV}`);
+      console.log(`🚪 Port        : ${env.PORT}`);
+      console.log(`🔗 API URL     : http://localhost:${env.PORT}`);
+      console.log(`⚡ Socket.IO   : Enabled`);
+      console.log(`🕒 Started At  : ${new Date().toLocaleString()}`);
+      console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+      console.log("");
+    });
+
+    httpServer.on("error", (error) => {
+      if (error.code === "EADDRINUSE") {
+        console.error("");
+        console.error("❌ Server Startup Failed");
+        console.error(`Port ${env.PORT} is already in use.`);
+      } else {
+        console.error("");
+        console.error("❌ Server Startup Failed");
+        console.error(error);
+      }
+
+      process.exit(1);
+    });
+  } catch (error) {
+    console.error("");
+    console.error("❌ Failed to Start Server");
+    console.error(error);
     process.exit(1);
-  });
+  }
 };
 
-startServer().catch((error) => {
-  console.error("Server startup failed");
-  console.error(error);
-  process.exit(1);
-});
+startServer();
