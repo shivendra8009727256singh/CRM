@@ -1,6 +1,8 @@
 import Joi from "joi";
 
 const objectId = Joi.string().length(24).hex();
+const optionalObjectId = objectId.allow("", null);
+const code = Joi.string().trim().uppercase().min(2).max(30).allow("", null);
 
 export const createBranchSchema = Joi.object({
   branchName: Joi.string().trim().min(2).max(120).required(),
@@ -34,7 +36,11 @@ export const updateBranchSchema = createBranchSchema.fork(
 );
 
 export const createDepartmentSchema = Joi.object({
-  branchId: objectId.allow(null),
+  // Internal/hidden field. Frontend should prefer branchCode.
+  branchId: optionalObjectId,
+
+  // Human-readable field for frontend forms, e.g. BR-01 / HEAD / NOIDA.
+  branchCode: code,
 
   departmentName: Joi.string()
     .trim()
@@ -58,7 +64,11 @@ export const updateDepartmentSchema = createDepartmentSchema.fork(
 );
 
 export const createDesignationSchema = Joi.object({
-  departmentId: objectId.allow(null),
+  // Internal/hidden field. Frontend should prefer departmentCode.
+  departmentId: optionalObjectId,
+
+  // Human-readable field for frontend forms, e.g. HR / SALES / TECH.
+  departmentCode: code,
 
   designationName: Joi.string()
     .trim()
@@ -84,7 +94,11 @@ export const updateDesignationSchema = createDesignationSchema.fork(
 );
 
 export const createHolidaySchema = Joi.object({
-  branchId: objectId.allow(null),
+  // Internal/hidden field. Frontend should prefer branchCode.
+  branchId: optionalObjectId,
+
+  // Human-readable field for frontend forms, e.g. BR-01 / HEAD / NOIDA.
+  branchCode: code,
 
   holidayName: Joi.string()
     .trim()
@@ -95,12 +109,7 @@ export const createHolidaySchema = Joi.object({
   date: Joi.date().required(),
 
   type: Joi.string()
-    .valid(
-      "public",
-      "company",
-      "festival",
-      "optional"
-    )
+    .valid("public", "company", "festival", "optional")
     .default("company"),
 
   description: Joi.string().allow("", null),

@@ -6,12 +6,14 @@ import {
   updateBranch,
   deleteBranch,
   findBranch,
+  findBranchByCode,
   listBranches,
 
   createDepartment,
   updateDepartment,
   deleteDepartment,
   findDepartment,
+  findDepartmentByCode,
   listDepartments,
 
   createDesignation,
@@ -54,6 +56,55 @@ const ensureSameCompany = (currentUser, record) => {
   if (userCompanyId !== recordCompanyId) {
     throw new ApiError(403, "You cannot access another company's data.");
   }
+};
+
+const cleanEmpty = (value) => {
+  if (value === "" || value === undefined) return null;
+  return value;
+};
+
+const normalizeCode = (value) => {
+  if (!value) return null;
+  return String(value).trim().toUpperCase();
+};
+
+const resolveBranchId = async (companyId, payload) => {
+  if (payload.branchId) return payload.branchId;
+
+  const branchCode = normalizeCode(payload.branchCode);
+  if (!branchCode) return null;
+
+  const branch = await findBranchByCode(companyId, branchCode);
+
+  if (!branch) {
+    throw new ApiError(404, `Branch not found for code: ${branchCode}`);
+  }
+
+  return branch._id;
+};
+
+const resolveDepartmentId = async (companyId, payload) => {
+  if (payload.departmentId) return payload.departmentId;
+
+  const departmentCode = normalizeCode(payload.departmentCode);
+  if (!departmentCode) return null;
+
+  const department = await findDepartmentByCode(companyId, departmentCode);
+
+  if (!department) {
+    throw new ApiError(404, `Department not found for code: ${departmentCode}`);
+  }
+
+  return department._id;
+};
+
+const removeFrontendLookupFields = (payload) => {
+  const cleaned = { ...payload };
+
+  delete cleaned.branchCode;
+  delete cleaned.departmentCode;
+
+  return cleaned;
 };
 
 /* ---------------- Branch ---------------- */
@@ -114,9 +165,14 @@ export const deleteBranchService = async (currentUser, id) => {
 export const createDepartmentService = async (currentUser, payload) => {
   ensureManageAccess(currentUser);
 
+  const companyId = getCompanyId(currentUser);
+  const branchId = cleanEmpty(await resolveBranchId(companyId, payload));
+  const cleanedPayload = removeFrontendLookupFields(payload);
+
   const department = await createDepartment({
-    ...payload,
-    companyId: getCompanyId(currentUser),
+    ...cleanedPayload,
+    branchId,
+    companyId,
     createdBy: currentUser._id,
   });
 
@@ -138,8 +194,17 @@ export const updateDepartmentService = async (currentUser, id, payload) => {
 
   ensureSameCompany(currentUser, department);
 
+  const companyId = getCompanyId(currentUser);
+  const cleanedPayload = removeFrontendLookupFields(payload);
+
+  if (Object.prototype.hasOwnProperty.call(payload, "branchCode")) {
+    cleanedPayload.branchId = cleanEmpty(await resolveBranchId(companyId, payload));
+  } else if (Object.prototype.hasOwnProperty.call(payload, "branchId")) {
+    cleanedPayload.branchId = cleanEmpty(payload.branchId);
+  }
+
   const updated = await updateDepartment(id, {
-    ...payload,
+    ...cleanedPayload,
     updatedBy: currentUser._id,
   });
 
@@ -167,9 +232,14 @@ export const deleteDepartmentService = async (currentUser, id) => {
 export const createDesignationService = async (currentUser, payload) => {
   ensureManageAccess(currentUser);
 
+  const companyId = getCompanyId(currentUser);
+  const departmentId = cleanEmpty(await resolveDepartmentId(companyId, payload));
+  const cleanedPayload = removeFrontendLookupFields(payload);
+
   const designation = await createDesignation({
-    ...payload,
-    companyId: getCompanyId(currentUser),
+    ...cleanedPayload,
+    departmentId,
+    companyId,
     createdBy: currentUser._id,
   });
 
@@ -191,8 +261,19 @@ export const updateDesignationService = async (currentUser, id, payload) => {
 
   ensureSameCompany(currentUser, designation);
 
+  const companyId = getCompanyId(currentUser);
+  const cleanedPayload = removeFrontendLookupFields(payload);
+
+  if (Object.prototype.hasOwnProperty.call(payload, "departmentCode")) {
+    cleanedPayload.departmentId = cleanEmpty(
+      await resolveDepartmentId(companyId, payload)
+    );
+  } else if (Object.prototype.hasOwnProperty.call(payload, "departmentId")) {
+    cleanedPayload.departmentId = cleanEmpty(payload.departmentId);
+  }
+
   const updated = await updateDesignation(id, {
-    ...payload,
+    ...cleanedPayload,
     updatedBy: currentUser._id,
   });
 
@@ -220,9 +301,14 @@ export const deleteDesignationService = async (currentUser, id) => {
 export const createHolidayService = async (currentUser, payload) => {
   ensureManageAccess(currentUser);
 
+  const companyId = getCompanyId(currentUser);
+  const branchId = cleanEmpty(await resolveBranchId(companyId, payload));
+  const cleanedPayload = removeFrontendLookupFields(payload);
+
   const holiday = await createHoliday({
-    ...payload,
-    companyId: getCompanyId(currentUser),
+    ...cleanedPayload,
+    branchId,
+    companyId,
     createdBy: currentUser._id,
   });
 
@@ -244,8 +330,17 @@ export const updateHolidayService = async (currentUser, id, payload) => {
 
   ensureSameCompany(currentUser, holiday);
 
+  const companyId = getCompanyId(currentUser);
+  const cleanedPayload = removeFrontendLookupFields(payload);
+
+  if (Object.prototype.hasOwnProperty.call(payload, "branchCode")) {
+    cleanedPayload.branchId = cleanEmpty(await resolveBranchId(companyId, payload));
+  } else if (Object.prototype.hasOwnProperty.call(payload, "branchId")) {
+    cleanedPayload.branchId = cleanEmpty(payload.branchId);
+  }
+
   const updated = await updateHoliday(id, {
-    ...payload,
+    ...cleanedPayload,
     updatedBy: currentUser._id,
   });
 
