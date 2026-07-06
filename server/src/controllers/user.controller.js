@@ -78,14 +78,29 @@ export const unblockUser = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, user, "User unblocked successfully"));
 });
 
-// PATCH /users/:id/reset-password
+
 export const resetUserPassword = asyncHandler(async (req, res) => {
   const { value, error } = resetPasswordSchema.validate(req.body);
   if (error) throw new ApiError(400, error.details[0].message);
 
-  await resetUserPasswordService(req.user, req.params.id, value.password);
+  const result = await resetUserPasswordService(
+    req.user,
+    req.params.id,
+    value.password,
+    {
+      sendEmail: value.sendEmail,
+    }
+  );
 
-  res.status(200).json(new ApiResponse(200, null, "Password reset successfully. User must change password on next login."));
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      result,
+      result.emailSent
+        ? "Password reset successfully and email sent to user."
+        : "Password reset successfully. Email was not sent."
+    )
+  );
 });
 
 // PATCH /users/:id/change-role

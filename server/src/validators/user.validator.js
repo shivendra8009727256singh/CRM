@@ -52,6 +52,7 @@ export const changeRoleSchema = Joi.object({
 
 export const resetPasswordSchema = Joi.object({
   password,
+  sendEmail: Joi.boolean().default(true),
 });
 
 export const assignPermissionsSchema = Joi.object({

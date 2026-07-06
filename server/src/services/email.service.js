@@ -181,23 +181,8 @@ export const sendWelcomeEmployeeEmail = async ({
   loginUrl,
   verifyUrl,
 }) => {
-  return sendEmail({
-    to,
-    subject: `${env.APP_NAME} - Welcome to the HR Portal`,
-    text: `Hello ${name}, your employee account has been created. Employee Code: ${employeeCode}. Verify Email: ${verifyUrl}. Login: ${loginUrl}. Temporary Password: ${temporaryPassword}`,
-    html: `<!DOCTYPE html>
-<html>
-<body style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#333">
-  <h2 style="color:#1a1a1a">Welcome to ${env.APP_NAME}</h2>
-  <p>Hello ${name || "User"},</p>
-  <p>Your employee account has been created successfully.</p>
-
-  <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:20px 0">
-    <p><strong>Employee Code:</strong> ${employeeCode}</p>
-    <p><strong>Login URL:</strong> <a href="${loginUrl}">${loginUrl}</a></p>
-    <p><strong>Temporary Password:</strong> ${temporaryPassword}</p>
-  </div>
-
+  const verificationBlock = verifyUrl
+    ? `
   <p><strong>Step 1:</strong> Verify your email address.</p>
 
   <p style="margin:24px 0">
@@ -213,6 +198,33 @@ export const sendWelcomeEmployeeEmail = async ({
   </p>
 
   <p><strong>Step 2:</strong> After verification, login using your official email and temporary password.</p>
+`
+    : `
+  <p>Please login using your official email and temporary password.</p>
+`;
+
+  const textVerification = verifyUrl
+    ? `Verify Email: ${verifyUrl}. `
+    : "";
+
+  return sendEmail({
+    to,
+    subject: `${env.APP_NAME} - Welcome to the HR Portal`,
+    text: `Hello ${name || "User"}, your employee account has been created. Employee Code: ${employeeCode}. ${textVerification}Login: ${loginUrl}. Temporary Password: ${temporaryPassword}`,
+    html: `<!DOCTYPE html>
+<html>
+<body style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#333">
+  <h2 style="color:#1a1a1a">Welcome to ${env.APP_NAME}</h2>
+  <p>Hello ${name || "User"},</p>
+  <p>Your employee account has been created successfully.</p>
+
+  <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:20px 0">
+    <p><strong>Employee Code:</strong> ${employeeCode}</p>
+    <p><strong>Login URL:</strong> <a href="${loginUrl}">${loginUrl}</a></p>
+    <p><strong>Temporary Password:</strong> ${temporaryPassword}</p>
+  </div>
+
+  ${verificationBlock}
 
   <p style="margin:24px 0">
     <a href="${loginUrl}"
@@ -225,6 +237,52 @@ export const sendWelcomeEmployeeEmail = async ({
 
   <p style="color:#666;font-size:13px">
     If you did not expect this email, please contact your HR team.
+  </p>
+
+  <hr style="border:none;border-top:1px solid #eee;margin:24px 0"/>
+  <p style="color:#999;font-size:12px">${env.APP_NAME}</p>
+</body>
+</html>`,
+    required: true,
+  });
+};
+
+export const sendAdminPasswordResetEmail = async ({
+  to,
+  name,
+  temporaryPassword,
+  loginUrl,
+  resetByName,
+}) => {
+  return sendEmail({
+    to,
+    subject: `${env.APP_NAME} - Your password has been reset`,
+    text: `Hello ${name || "User"}, your password has been reset by ${resetByName || "your administrator"}. Login: ${loginUrl}. Temporary Password: ${temporaryPassword}`,
+    html: `<!DOCTYPE html>
+<html>
+<body style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#333">
+  <h2 style="color:#1a1a1a">Password Reset by Administrator</h2>
+
+  <p>Hello ${name || "User"},</p>
+
+  <p>Your password has been reset by <strong>${resetByName || "your administrator"}</strong>.</p>
+
+  <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:20px 0">
+    <p><strong>Login URL:</strong> <a href="${loginUrl}">${loginUrl}</a></p>
+    <p><strong>Temporary Password:</strong> ${temporaryPassword}</p>
+  </div>
+
+  <p>Please login using this temporary password and change your password immediately.</p>
+
+  <p style="margin:24px 0">
+    <a href="${loginUrl}"
+       style="background:#16A34A;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">
+      Login Now
+    </a>
+  </p>
+
+  <p style="color:#666;font-size:13px">
+    If you did not expect this email, please contact your HR/Admin team immediately.
   </p>
 
   <hr style="border:none;border-top:1px solid #eee;margin:24px 0"/>

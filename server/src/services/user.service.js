@@ -15,7 +15,10 @@ import {
 import { findCompanyById } from "../repositories/company.repository.js";
 import { findCompanyByCode } from "../repositories/company.repository.js";
 import crypto from "crypto";
-import { sendVerificationEmail } from "./email.service.js";
+import {
+  sendVerificationEmail,
+  sendAdminPasswordResetEmail,
+} from "./email.service.js";
 
 
 const createEmailVerificationToken = () => {
@@ -348,7 +351,13 @@ export const unblockUserService = async (currentUser, id) => {
   return targetUser.toSafeObject();
 };
 
-export const resetUserPasswordService = async (currentUser, id, password) => {
+
+export const resetUserPasswordService = async (
+  currentUser,
+  id,
+  password,
+  { sendEmail = true } = {}
+) => {
   const targetUser = await findUserByIdWithPassword(id);
 
   if (!targetUser) {
@@ -356,18 +365,57 @@ export const resetUserPasswordService = async (currentUser, id, password) => {
   }
 
   if (!canManageUser(currentUser, targetUser)) {
-    throw new ApiError(403, "You are not allowed to reset this user's password.");
+    throw new ApiError(
+      403,
+      "You are not allowed to reset this user's password."
+    );
+  }
+
+  if (currentUser._id.toString() === targetUser._id.toString()) {
+    throw new ApiError(400, "You cannot reset your own password from this panel.");
   }
 
   targetUser.passwordHash = await bcrypt.hash(password, env.BCRYPT_ROUNDS);
   targetUser.forcePasswordChange = true;
   targetUser.loginAttempts = 0;
   targetUser.lockUntil = null;
+  targetUser.resetPasswordTokenHash = null;
+  targetUser.resetPasswordExpiresAt = null;
+  targetUser.unlockTokenHash = null;
+  targetUser.unlockTokenExpiresAt = null;
   targetUser.updatedBy = currentUser._id;
 
   await targetUser.save();
 
-  return true;
+  const result = {
+    passwordReset: true,
+    forcePasswordChange: true,
+    emailSent: false,
+    emailSentTo: null,
+    emailWarning: null,
+  };
+
+  if (!sendEmail) {
+    result.emailWarning = "Email sending was disabled for this reset.";
+    return result;
+  }
+
+  try {
+    await sendAdminPasswordResetEmail({
+      to: targetUser.email,
+      name: targetUser.name,
+      temporaryPassword: password,
+      loginUrl: `${env.CLIENT_ORIGIN}/login`,
+      resetByName: currentUser.name,
+    });
+
+    result.emailSent = true;
+    result.emailSentTo = targetUser.email;
+  } catch (error) {
+    result.emailWarning = `Password was reset, but email could not be sent. Share the temporary password manually. ${error.message}`;
+  }
+
+  return result;
 };
 
 export const changeRoleService = async (currentUser, id, role) => {

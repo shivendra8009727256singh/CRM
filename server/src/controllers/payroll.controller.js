@@ -38,7 +38,8 @@ import {
   getPayslipByIdService,
   updatePayslipStatusService,
   getPayrollDashboardService,
-  generatePayslipPdfService
+  generatePayslipPdfService,
+  getPayslipPdfFileService,
 } from "../services/payroll.service.js";
 
 
@@ -240,4 +241,9 @@ export const generatePayslipPdf = asyncHandler(async (req, res) => {
     res.status(200).json(
       new ApiResponse(200, data, "Payslip PDF generated successfully")
     );
+  });
+  export const downloadPayslipPdf = asyncHandler(async (req, res) => {
+    const data = await getPayslipPdfFileService(req.user, req.params.id);
+  
+    res.download(data.filePath, data.fileName);
   });

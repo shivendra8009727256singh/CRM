@@ -40,11 +40,14 @@ import {
 
   createPayslipRecord,
   findPayslipById,
+  findPayslipByIdForPdf,
   findPayslipByEmployeeMonth,
   listPayslips,
   updatePayslipById,
   countPayslips,
 } from "../repositories/payroll.repository.js";
+import { generatePayslipPdfFile } from "../utils/payslipPdf.js";
+
 
 const getCompanyId = (currentUser) => {
   if (!currentUser.companyId) {
@@ -871,14 +874,59 @@ export const generatePayslipPdfService = async (currentUser, id) => {
   ensurePayrollAccess(currentUser);
 
   const companyId = getCompanyId(currentUser);
-  const payslip = await findPayslipById(id);
 
+  const payslip = await findPayslipByIdForPdf(id);
   ensureSameCompany(companyId, payslip, "Payslip not found.");
 
-  const fakePdfUrl = `/uploads/payslips/${payslip.payslipNumber}.pdf`;
+  const company = await Company.findById(companyId).lean();
 
-  return updatePayslipById(id, {
-    pdfUrl: fakePdfUrl,
+  if (!company) {
+    throw new ApiError(404, "Company not found.");
+  }
+
+  const generated = await generatePayslipPdfFile({
+    company,
+    payslip,
+  });
+
+  const updated = await updatePayslipById(id, {
+    pdfUrl: generated.pdfUrl,
     updatedBy: currentUser._id,
   });
+
+  return {
+    ...(typeof updated.toObject === "function" ? updated.toObject() : updated),
+    pdfUrl: generated.pdfUrl,
+    pdfFileName: generated.fileName,
+  };
+};
+
+export const getPayslipPdfFileService = async (currentUser, id) => {
+  const companyId = getCompanyId(currentUser);
+
+  const payslip = await findPayslipByIdForPdf(id);
+  ensureSameCompany(companyId, payslip, "Payslip not found.");
+
+  const company = await Company.findById(companyId).lean();
+
+  if (!company) {
+    throw new ApiError(404, "Company not found.");
+  }
+
+  const generated = await generatePayslipPdfFile({
+    company,
+    payslip,
+  });
+
+  if (!payslip.pdfUrl) {
+    await updatePayslipById(id, {
+      pdfUrl: generated.pdfUrl,
+      updatedBy: currentUser._id,
+    });
+  }
+
+  return {
+    filePath: generated.filePath,
+    fileName: generated.fileName,
+  };
 };

@@ -177,6 +177,18 @@ export const findPayslipById = async (id) => {
   return Payslip.findById(id);
 };
 
+export const findPayslipByIdForPdf = async (id) => {
+  return Payslip.findById(id)
+    .populate(
+      "employeeId",
+      "displayName employeeCode officialEmail mobile joiningDate"
+    )
+    .populate(
+      "payrollRunId",
+      "payrollCode month year status processedAt"
+    );
+};
+
 export const findPayslipByEmployeeMonth = async ({
   companyId,
   employeeId,

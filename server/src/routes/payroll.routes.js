@@ -26,6 +26,7 @@ import {
   getPayslipById,
   updatePayslipStatus,
   generatePayslipPdf,
+  downloadPayslipPdf,
 } from "../controllers/payroll.controller.js";
 
 import {
@@ -172,6 +173,10 @@ router.post(
     requirePermission(PERMISSIONS.EMPLOYEE_UPDATE),
     generatePayslipPdf
   );
-
+  router.get(
+    "/payslips/:id/pdf",
+    requirePermission(PERMISSIONS.EMPLOYEE_READ),
+    downloadPayslipPdf
+  );
 
 export default router;
