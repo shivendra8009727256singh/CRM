@@ -52,23 +52,19 @@ const CODE_FIELDS = [
   "departmentCode",
   "designationCode",
   "reportingManagerCode",
+  "reportingManagerEmployeeCode",
   "shiftCode",
   "attendancePolicyCode",
   "leavePolicyCode",
   "salaryStructureCode",
+  "structureCode",
 ];
 
-const REFERENCE_ID_FIELDS = [
-  "userId",
-  "branchId",
-  "departmentId",
-  "designationId",
-  "reportingManagerId",
-  "shiftId",
-  "attendancePolicyId",
-  "leavePolicyId",
-  "salaryStructureId",
-];
+const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+
+const hasValue = (value) => {
+  return value !== undefined && value !== null && value !== "";
+};
 
 const getCompanyId = (currentUser) => {
   if (!currentUser.companyId) {
@@ -98,12 +94,12 @@ const ensureSameCompany = (currentUser, employee) => {
 };
 
 const normalizeCode = (value) => {
-  if (value === undefined || value === null || value === "") return null;
+  if (!hasValue(value)) return null;
   return String(value).trim().toUpperCase();
 };
 
 const normalizeOptionalId = (value) => {
-  if (value === undefined || value === null || value === "") return null;
+  if (!hasValue(value)) return null;
   return value;
 };
 
@@ -123,7 +119,26 @@ const ensureDocumentCompany = (document, companyId, message) => {
   }
 };
 
-const resolveUserReference = async (companyId, payload) => {
+const shouldResolveReference = (payload, idField, codeFields = [], partial) => {
+  if (!partial) return true;
+
+  if (hasOwn(payload, idField)) return true;
+
+  return codeFields.some((field) => hasOwn(payload, field));
+};
+
+const resolveUserReference = async (companyId, payload, { partial = false } = {}) => {
+  const shouldResolve = shouldResolveReference(
+    payload,
+    "userId",
+    ["userEmail"],
+    partial
+  );
+
+  if (!shouldResolve) {
+    return;
+  }
+
   const userId = normalizeOptionalId(payload.userId);
   const userEmail = payload.userEmail?.trim().toLowerCase();
 
@@ -132,123 +147,320 @@ const resolveUserReference = async (companyId, payload) => {
     return;
   }
 
-  const user = userEmail ? await findUserByEmail(userEmail) : await findUserById(userId);
+  const user = userEmail
+    ? await findUserByEmail(userEmail)
+    : await findUserById(userId);
 
-  if (!user || !user.companyId || user.companyId.toString() !== companyId.toString()) {
+  if (
+    !user ||
+    !user.companyId ||
+    user.companyId.toString() !== companyId.toString()
+  ) {
     throw new ApiError(400, "Invalid user for this company.");
   }
 
   payload.userId = user._id;
 };
 
-const resolveEmployeeReferences = async (companyId, payload) => {
+const resolveBranchReference = async (
+  companyId,
+  resolved,
+  payload,
+  { partial = false } = {}
+) => {
+  const shouldResolve = shouldResolveReference(
+    payload,
+    "branchId",
+    ["branchCode"],
+    partial
+  );
+
+  if (!shouldResolve) return;
+
+  const branchId = normalizeOptionalId(payload.branchId);
+  const branchCode = normalizeCode(payload.branchCode);
+
+  if (!branchId && !branchCode) {
+    resolved.branchId = null;
+    return;
+  }
+
+  const branch = branchCode
+    ? await findBranchByCode(companyId, branchCode)
+    : await findBranchById(branchId);
+
+  ensureDocumentCompany(branch, companyId, "Invalid branch for this company.");
+  resolved.branchId = branch._id;
+};
+
+const resolveDepartmentReference = async (
+  companyId,
+  resolved,
+  payload,
+  { partial = false } = {}
+) => {
+  const shouldResolve = shouldResolveReference(
+    payload,
+    "departmentId",
+    ["departmentCode"],
+    partial
+  );
+
+  if (!shouldResolve) return;
+
+  const departmentId = normalizeOptionalId(payload.departmentId);
+  const departmentCode = normalizeCode(payload.departmentCode);
+
+  if (!departmentId && !departmentCode) {
+    resolved.departmentId = null;
+    return;
+  }
+
+  const department = departmentCode
+    ? await findDepartmentByCode(companyId, departmentCode)
+    : await findDepartmentById(departmentId);
+
+  ensureDocumentCompany(
+    department,
+    companyId,
+    "Invalid department for this company."
+  );
+
+  resolved.departmentId = department._id;
+};
+
+const resolveDesignationReference = async (
+  companyId,
+  resolved,
+  payload,
+  { partial = false } = {}
+) => {
+  const shouldResolve = shouldResolveReference(
+    payload,
+    "designationId",
+    ["designationCode"],
+    partial
+  );
+
+  if (!shouldResolve) return;
+
+  const designationId = normalizeOptionalId(payload.designationId);
+  const designationCode = normalizeCode(payload.designationCode);
+
+  if (!designationId && !designationCode) {
+    resolved.designationId = null;
+    return;
+  }
+
+  const designation = designationCode
+    ? await findDesignationByCode(companyId, designationCode)
+    : await findDesignationById(designationId);
+
+  ensureDocumentCompany(
+    designation,
+    companyId,
+    "Invalid designation for this company."
+  );
+
+  resolved.designationId = designation._id;
+};
+
+const resolveReportingManagerReference = async (
+  companyId,
+  resolved,
+  payload,
+  { partial = false } = {}
+) => {
+  const shouldResolve = shouldResolveReference(
+    payload,
+    "reportingManagerId",
+    ["reportingManagerCode", "reportingManagerEmployeeCode"],
+    partial
+  );
+
+  if (!shouldResolve) return;
+
+  const reportingManagerId = normalizeOptionalId(payload.reportingManagerId);
+  const reportingManagerCode = normalizeCode(
+    payload.reportingManagerCode || payload.reportingManagerEmployeeCode
+  );
+
+  if (!reportingManagerId && !reportingManagerCode) {
+    resolved.reportingManagerId = null;
+    return;
+  }
+
+  const manager = reportingManagerCode
+    ? await findEmployeeByCode(companyId, reportingManagerCode)
+    : await findEmployeeById(reportingManagerId);
+
+  ensureDocumentCompany(
+    manager,
+    companyId,
+    "Invalid reporting manager for this company."
+  );
+
+  resolved.reportingManagerId = manager._id;
+};
+
+const resolveShiftReference = async (
+  companyId,
+  resolved,
+  payload,
+  { partial = false } = {}
+) => {
+  const shouldResolve = shouldResolveReference(
+    payload,
+    "shiftId",
+    ["shiftCode"],
+    partial
+  );
+
+  if (!shouldResolve) return;
+
+  const shiftId = normalizeOptionalId(payload.shiftId);
+  const shiftCode = normalizeCode(payload.shiftCode);
+
+  if (!shiftId && !shiftCode) {
+    resolved.shiftId = null;
+    return;
+  }
+
+  const shift = shiftCode
+    ? await findShiftByCode(companyId, shiftCode)
+    : await findShiftById(shiftId);
+
+  ensureDocumentCompany(shift, companyId, "Invalid shift for this company.");
+  resolved.shiftId = shift._id;
+};
+
+const resolveAttendancePolicyReference = async (
+  companyId,
+  resolved,
+  payload,
+  { partial = false } = {}
+) => {
+  const shouldResolve = shouldResolveReference(
+    payload,
+    "attendancePolicyId",
+    ["attendancePolicyCode"],
+    partial
+  );
+
+  if (!shouldResolve) return;
+
+  const attendancePolicyId = normalizeOptionalId(payload.attendancePolicyId);
+  const attendancePolicyCode = normalizeCode(payload.attendancePolicyCode);
+
+  if (!attendancePolicyId && !attendancePolicyCode) {
+    resolved.attendancePolicyId = null;
+    return;
+  }
+
+  const attendancePolicy = attendancePolicyCode
+    ? await findAttendancePolicyByCode(companyId, attendancePolicyCode)
+    : await findAttendancePolicyById(attendancePolicyId);
+
+  ensureDocumentCompany(
+    attendancePolicy,
+    companyId,
+    "Invalid attendance policy for this company."
+  );
+
+  resolved.attendancePolicyId = attendancePolicy._id;
+};
+
+const resolveLeavePolicyReference = async (
+  companyId,
+  resolved,
+  payload,
+  { partial = false } = {}
+) => {
+  const shouldResolve = shouldResolveReference(
+    payload,
+    "leavePolicyId",
+    ["leavePolicyCode"],
+    partial
+  );
+
+  if (!shouldResolve) return;
+
+  const leavePolicyId = normalizeOptionalId(payload.leavePolicyId);
+  const leavePolicyCode = normalizeCode(payload.leavePolicyCode);
+
+  if (!leavePolicyId && !leavePolicyCode) {
+    resolved.leavePolicyId = null;
+    return;
+  }
+
+  const leavePolicy = leavePolicyCode
+    ? await findLeavePolicyByCode(companyId, leavePolicyCode)
+    : await findLeavePolicyById(leavePolicyId);
+
+  ensureDocumentCompany(
+    leavePolicy,
+    companyId,
+    "Invalid leave policy for this company."
+  );
+
+  resolved.leavePolicyId = leavePolicy._id;
+};
+
+const resolveSalaryStructureReference = async (
+  companyId,
+  resolved,
+  payload,
+  { partial = false } = {}
+) => {
+  const shouldResolve = shouldResolveReference(
+    payload,
+    "salaryStructureId",
+    ["salaryStructureCode", "structureCode"],
+    partial
+  );
+
+  if (!shouldResolve) return;
+
+  const salaryStructureId = normalizeOptionalId(payload.salaryStructureId);
+  const salaryStructureCode = normalizeCode(
+    payload.salaryStructureCode || payload.structureCode
+  );
+
+  if (!salaryStructureId && !salaryStructureCode) {
+    resolved.salaryStructureId = null;
+    return;
+  }
+
+  const salaryStructure = salaryStructureCode
+    ? await findSalaryStructureByCode(companyId, salaryStructureCode)
+    : await findSalaryStructureById(salaryStructureId);
+
+  ensureDocumentCompany(
+    salaryStructure,
+    companyId,
+    "Invalid salary structure for this company."
+  );
+
+  resolved.salaryStructureId = salaryStructure._id;
+};
+
+const resolveEmployeeReferences = async (
+  companyId,
+  payload,
+  { partial = false } = {}
+) => {
   const resolved = { ...payload };
 
-  await resolveUserReference(companyId, resolved);
+  await resolveUserReference(companyId, resolved, { partial });
 
-  const branchId = normalizeOptionalId(resolved.branchId);
-  const branchCode = normalizeCode(resolved.branchCode);
-  if (branchId || branchCode) {
-    const branch = branchCode
-      ? await findBranchByCode(companyId, branchCode)
-      : await findBranchById(branchId);
-
-    ensureDocumentCompany(branch, companyId, "Invalid branch for this company.");
-    resolved.branchId = branch._id;
-  } else {
-    resolved.branchId = null;
-  }
-
-  const departmentId = normalizeOptionalId(resolved.departmentId);
-  const departmentCode = normalizeCode(resolved.departmentCode);
-  if (departmentId || departmentCode) {
-    const department = departmentCode
-      ? await findDepartmentByCode(companyId, departmentCode)
-      : await findDepartmentById(departmentId);
-
-    ensureDocumentCompany(department, companyId, "Invalid department for this company.");
-    resolved.departmentId = department._id;
-  } else {
-    resolved.departmentId = null;
-  }
-
-  const designationId = normalizeOptionalId(resolved.designationId);
-  const designationCode = normalizeCode(resolved.designationCode);
-  if (designationId || designationCode) {
-    const designation = designationCode
-      ? await findDesignationByCode(companyId, designationCode)
-      : await findDesignationById(designationId);
-
-    ensureDocumentCompany(designation, companyId, "Invalid designation for this company.");
-    resolved.designationId = designation._id;
-  } else {
-    resolved.designationId = null;
-  }
-
-  const reportingManagerId = normalizeOptionalId(resolved.reportingManagerId);
-  const reportingManagerCode = normalizeCode(resolved.reportingManagerCode);
-  if (reportingManagerId || reportingManagerCode) {
-    const manager = reportingManagerCode
-      ? await findEmployeeByCode(companyId, reportingManagerCode)
-      : await findEmployeeById(reportingManagerId);
-
-    ensureDocumentCompany(manager, companyId, "Invalid reporting manager for this company.");
-    resolved.reportingManagerId = manager._id;
-  } else {
-    resolved.reportingManagerId = null;
-  }
-
-  const shiftId = normalizeOptionalId(resolved.shiftId);
-  const shiftCode = normalizeCode(resolved.shiftCode);
-  if (shiftId || shiftCode) {
-    const shift = shiftCode
-      ? await findShiftByCode(companyId, shiftCode)
-      : await findShiftById(shiftId);
-
-    ensureDocumentCompany(shift, companyId, "Invalid shift for this company.");
-    resolved.shiftId = shift._id;
-  } else {
-    resolved.shiftId = null;
-  }
-
-  const attendancePolicyId = normalizeOptionalId(resolved.attendancePolicyId);
-  const attendancePolicyCode = normalizeCode(resolved.attendancePolicyCode);
-  if (attendancePolicyId || attendancePolicyCode) {
-    const attendancePolicy = attendancePolicyCode
-      ? await findAttendancePolicyByCode(companyId, attendancePolicyCode)
-      : await findAttendancePolicyById(attendancePolicyId);
-
-    ensureDocumentCompany(attendancePolicy, companyId, "Invalid attendance policy for this company.");
-    resolved.attendancePolicyId = attendancePolicy._id;
-  } else {
-    resolved.attendancePolicyId = null;
-  }
-
-  const leavePolicyId = normalizeOptionalId(resolved.leavePolicyId);
-  const leavePolicyCode = normalizeCode(resolved.leavePolicyCode);
-  if (leavePolicyId || leavePolicyCode) {
-    const leavePolicy = leavePolicyCode
-      ? await findLeavePolicyByCode(companyId, leavePolicyCode)
-      : await findLeavePolicyById(leavePolicyId);
-
-    ensureDocumentCompany(leavePolicy, companyId, "Invalid leave policy for this company.");
-    resolved.leavePolicyId = leavePolicy._id;
-  } else {
-    resolved.leavePolicyId = null;
-  }
-
-  const salaryStructureId = normalizeOptionalId(resolved.salaryStructureId);
-  const salaryStructureCode = normalizeCode(resolved.salaryStructureCode);
-  if (salaryStructureId || salaryStructureCode) {
-    const salaryStructure = salaryStructureCode
-      ? await findSalaryStructureByCode(companyId, salaryStructureCode)
-      : await findSalaryStructureById(salaryStructureId);
-
-    ensureDocumentCompany(salaryStructure, companyId, "Invalid salary structure for this company.");
-    resolved.salaryStructureId = salaryStructure._id;
-  } else {
-    resolved.salaryStructureId = null;
-  }
+  await resolveBranchReference(companyId, resolved, payload, { partial });
+  await resolveDepartmentReference(companyId, resolved, payload, { partial });
+  await resolveDesignationReference(companyId, resolved, payload, { partial });
+  await resolveReportingManagerReference(companyId, resolved, payload, { partial });
+  await resolveShiftReference(companyId, resolved, payload, { partial });
+  await resolveAttendancePolicyReference(companyId, resolved, payload, { partial });
+  await resolveLeavePolicyReference(companyId, resolved, payload, { partial });
+  await resolveSalaryStructureReference(companyId, resolved, payload, { partial });
 
   return removeHelperFields(resolved);
 };
@@ -282,17 +494,35 @@ const resolveEmployeeFilterReferences = async (companyId, query = {}) => {
 
   if (query.branchCode && !query.branchId) {
     const branch = await findBranchByCode(companyId, query.branchCode);
-    resolvedQuery.branchId = branch?._id;
+
+    if (!branch) {
+      throw new ApiError(404, "Branch not found.");
+    }
+
+    resolvedQuery.branchId = branch._id;
   }
 
   if (query.departmentCode && !query.departmentId) {
     const department = await findDepartmentByCode(companyId, query.departmentCode);
-    resolvedQuery.departmentId = department?._id;
+
+    if (!department) {
+      throw new ApiError(404, "Department not found.");
+    }
+
+    resolvedQuery.departmentId = department._id;
   }
 
   if (query.designationCode && !query.designationId) {
-    const designation = await findDesignationByCode(companyId, query.designationCode);
-    resolvedQuery.designationId = designation?._id;
+    const designation = await findDesignationByCode(
+      companyId,
+      query.designationCode
+    );
+
+    if (!designation) {
+      throw new ApiError(404, "Designation not found.");
+    }
+
+    resolvedQuery.designationId = designation._id;
   }
 
   return resolvedQuery;
@@ -321,7 +551,11 @@ const buildEmployeeFilter = (companyId, query = {}) => {
   return filter;
 };
 
-const ensureNoDuplicates = async (companyId, payload, currentEmployeeId = null) => {
+const ensureNoDuplicates = async (
+  companyId,
+  payload,
+  currentEmployeeId = null
+) => {
   if (payload.employeeCode) {
     const existingCode = await findEmployeeByCode(companyId, payload.employeeCode);
 
@@ -366,10 +600,14 @@ export const createEmployeeService = async (currentUser, payload) => {
   ensureManageAccess(currentUser);
 
   const companyId = getCompanyId(currentUser);
-  const resolvedPayload = await resolveEmployeeReferences(companyId, payload);
 
-  const employeeCode = normalizeCode(resolvedPayload.employeeCode) ||
-    await generateEmployeeCode(companyId);
+  const resolvedPayload = await resolveEmployeeReferences(companyId, payload, {
+    partial: false,
+  });
+
+  const employeeCode =
+    normalizeCode(resolvedPayload.employeeCode) ||
+    (await generateEmployeeCode(companyId));
 
   const finalPayload = {
     ...resolvedPayload,
@@ -392,6 +630,7 @@ export const getEmployeesService = async (currentUser, query = {}) => {
 
   const page = Number(query.page || 1);
   const limit = Math.min(Number(query.limit || 10), 100);
+
   const resolvedQuery = await resolveEmployeeFilterReferences(companyId, query);
   const filter = buildEmployeeFilter(companyId, resolvedQuery);
 
@@ -428,7 +667,9 @@ export const updateEmployeeService = async (currentUser, id, payload) => {
 
   ensureSameCompany(currentUser, employee);
 
-  const resolvedPayload = await resolveEmployeeReferences(companyId, payload);
+  const resolvedPayload = await resolveEmployeeReferences(companyId, payload, {
+    partial: true,
+  });
 
   if (
     resolvedPayload.reportingManagerId &&
@@ -510,7 +751,11 @@ export const deleteEmployeeService = async (currentUser, id) => {
 
 /* ---------------- Employee Details ---------------- */
 
-export const upsertEmployeeFamilyService = async (currentUser, employeeId, payload) => {
+export const upsertEmployeeFamilyService = async (
+  currentUser,
+  employeeId,
+  payload
+) => {
   ensureManageAccess(currentUser);
 
   const employee = await getEmployeeByIdService(currentUser, employeeId);
@@ -528,7 +773,11 @@ export const getEmployeeFamilyService = async (currentUser, employeeId) => {
   return findEmployeeFamily(employeeId);
 };
 
-export const upsertEmployeeBankService = async (currentUser, employeeId, payload) => {
+export const upsertEmployeeBankService = async (
+  currentUser,
+  employeeId,
+  payload
+) => {
   ensureManageAccess(currentUser);
 
   const employee = await getEmployeeByIdService(currentUser, employeeId);
