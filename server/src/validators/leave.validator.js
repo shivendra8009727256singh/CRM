@@ -8,30 +8,24 @@ import {
 } from "../models/LeaveRequest.js";
 
 const objectId = Joi.string().hex().length(24);
+const code = Joi.string().trim().uppercase().min(1).max(50);
 
 /* ================= LEAVE TYPE ================= */
 
 export const createLeaveTypeSchema = Joi.object({
   leaveName: Joi.string().trim().max(100).required(),
-
-  leaveCode: Joi.string().trim().uppercase().max(30).required(),
+  leaveCode: code.max(30).required(),
 
   category: Joi.string()
     .valid(...Object.values(LEAVE_CATEGORY))
     .required(),
 
   description: Joi.string().trim().allow("", null),
-
   paid: Joi.boolean().default(true),
-
   allowHalfDay: Joi.boolean().default(true),
-
   requireDocument: Joi.boolean().default(false),
-
   requireApproval: Joi.boolean().default(true),
-
   colorCode: Joi.string().trim().allow("", null),
-
   isActive: Joi.boolean().default(true),
 });
 
@@ -43,10 +37,11 @@ export const updateLeaveTypeSchema = createLeaveTypeSchema.fork(
 /* ================= LEAVE POLICY ================= */
 
 const leavePolicyRuleSchema = Joi.object({
-  leaveTypeId: objectId.required(),
+  leaveTypeId: objectId.allow("", null),
+  leaveTypeCode: code.allow("", null),
+  leaveCode: code.allow("", null),
 
   yearlyQuota: Joi.number().min(0).default(0),
-
   monthlyAccrual: Joi.number().min(0).default(0),
 
   accrualFrequency: Joi.string()
@@ -54,15 +49,11 @@ const leavePolicyRuleSchema = Joi.object({
     .default(ACCRUAL_FREQUENCY.NONE),
 
   carryForwardAllowed: Joi.boolean().default(false),
-
   maxCarryForward: Joi.number().min(0).default(0),
-
   encashmentAllowed: Joi.boolean().default(false),
-
   maxConsecutiveDays: Joi.number().integer().min(0).default(0),
-
   minNoticeDays: Joi.number().integer().min(0).default(0),
-});
+}).or("leaveTypeId", "leaveTypeCode", "leaveCode");
 
 const approvalLevelSchema = Joi.object({
   level: Joi.number().integer().min(1).required(),
@@ -71,34 +62,27 @@ const approvalLevelSchema = Joi.object({
     .valid("reporting_manager", "hr", "company_admin", "specific_employee")
     .default("reporting_manager"),
 
-  approverEmployeeId: objectId.allow(null),
+  approverEmployeeId: objectId.allow("", null),
+  approverEmployeeCode: code.allow("", null),
 
   required: Joi.boolean().default(true),
 });
 
 export const createLeavePolicySchema = Joi.object({
   policyName: Joi.string().trim().max(120).required(),
-
-  policyCode: Joi.string().trim().uppercase().max(30).required(),
+  policyCode: code.max(30).required(),
 
   description: Joi.string().trim().allow("", null),
-
   effectiveFrom: Joi.date().allow(null),
-
   effectiveTo: Joi.date().allow(null),
 
   rules: Joi.array().items(leavePolicyRuleSchema).default([]),
-
   approvalLevels: Joi.array().items(approvalLevelSchema).default([]),
 
   allowNegativeBalance: Joi.boolean().default(false),
-
   allowBackdatedLeave: Joi.boolean().default(false),
-
   backdatedLimitDays: Joi.number().integer().min(0).default(0),
-
   isDefault: Joi.boolean().default(false),
-
   isActive: Joi.boolean().default(true),
 });
 
@@ -110,45 +94,51 @@ export const updateLeavePolicySchema = createLeavePolicySchema.fork(
 /* ================= LEAVE BALANCE ================= */
 
 export const createLeaveBalanceSchema = Joi.object({
-  employeeId: objectId.required(),
+  employeeId: objectId.allow("", null),
+  employeeCode: code.allow("", null),
 
-  leaveTypeId: objectId.required(),
+  leaveTypeId: objectId.allow("", null),
+  leaveTypeCode: code.allow("", null),
+  leaveCode: code.allow("", null),
 
-  leavePolicyId: objectId.allow(null),
+  leavePolicyId: objectId.allow("", null),
+  leavePolicyCode: code.allow("", null),
+  policyCode: code.allow("", null),
 
   year: Joi.number().integer().required(),
 
   openingBalance: Joi.number().min(0).default(0),
-
   credited: Joi.number().min(0).default(0),
-
   availed: Joi.number().min(0).default(0),
-
   pending: Joi.number().min(0).default(0),
-
   carryForward: Joi.number().min(0).default(0),
-
   availableBalance: Joi.number().min(0).default(0),
 
   remarks: Joi.string().trim().allow("", null),
-});
+})
+  .or("employeeId", "employeeCode")
+  .or("leaveTypeId", "leaveTypeCode", "leaveCode");
 
 export const updateLeaveBalanceSchema = createLeaveBalanceSchema.fork(
-  ["employeeId", "leaveTypeId", "year"],
+  ["employeeId", "employeeCode", "leaveTypeId", "leaveTypeCode", "leaveCode", "year"],
   (schema) => schema.optional()
 );
 
 /* ================= LEAVE REQUEST ================= */
 
 export const applyLeaveSchema = Joi.object({
-  employeeId: objectId.required(),
+  employeeId: objectId.allow("", null),
+  employeeCode: code.allow("", null),
 
-  leaveTypeId: objectId.required(),
+  leaveTypeId: objectId.allow("", null),
+  leaveTypeCode: code.allow("", null),
+  leaveCode: code.allow("", null),
 
-  leavePolicyId: objectId.allow(null),
+  leavePolicyId: objectId.allow("", null),
+  leavePolicyCode: code.allow("", null),
+  policyCode: code.allow("", null),
 
   fromDate: Joi.date().required(),
-
   toDate: Joi.date().required(),
 
   dayType: Joi.string()
@@ -156,9 +146,10 @@ export const applyLeaveSchema = Joi.object({
     .default(LEAVE_DAY_TYPE.FULL_DAY),
 
   reason: Joi.string().trim().min(2).max(1000).required(),
-
   attachment: Joi.string().trim().allow("", null),
-});
+})
+  .or("employeeId", "employeeCode")
+  .or("leaveTypeId", "leaveTypeCode", "leaveCode");
 
 export const updateLeaveRequestStatusSchema = Joi.object({
   status: Joi.string()
@@ -170,6 +161,5 @@ export const updateLeaveRequestStatusSchema = Joi.object({
     .required(),
 
   approverRemarks: Joi.string().trim().allow("", null),
-
   cancellationReason: Joi.string().trim().allow("", null),
 });

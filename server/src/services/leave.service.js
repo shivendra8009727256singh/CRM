@@ -2,7 +2,10 @@ import { ApiError } from "../utils/apiError.js";
 import { ROLES } from "../constants/roles.js";
 import { LEAVE_REQUEST_STATUS, LEAVE_DAY_TYPE } from "../models/LeaveRequest.js";
 
-import { findEmployeeById } from "../repositories/employee.repository.js";
+import {
+  findEmployeeById,
+  findEmployeeByCode,
+} from "../repositories/employee.repository.js";
 
 import {
   createLeaveTypeRecord,
@@ -53,16 +56,6 @@ const ensureSameCompany = (companyId, record, message = "Record not found.") => 
   }
 };
 
-const validateEmployee = async (companyId, employeeId) => {
-  const employee = await findEmployeeById(employeeId);
-
-  if (!employee || employee.companyId.toString() !== companyId.toString()) {
-    throw new ApiError(404, "Employee not found.");
-  }
-
-  return employee;
-};
-
 const calculateLeaveDays = (fromDate, toDate, dayType) => {
   if (dayType !== LEAVE_DAY_TYPE.FULL_DAY) return 0.5;
 
@@ -79,6 +72,125 @@ const calculateLeaveDays = (fromDate, toDate, dayType) => {
   }
 
   return diff;
+};
+
+const resolveEmployee = async (companyId, payloadOrCode) => {
+  let employeeId = null;
+  let employeeCode = null;
+
+  if (typeof payloadOrCode === "string") {
+    employeeCode = payloadOrCode;
+  } else {
+    employeeId = payloadOrCode.employeeId || payloadOrCode.approverEmployeeId;
+    employeeCode =
+      payloadOrCode.employeeCode || payloadOrCode.approverEmployeeCode;
+  }
+
+  let employee = null;
+
+  if (employeeId) {
+    employee = await findEmployeeById(employeeId);
+  }
+
+  if (!employee && employeeCode) {
+    employee = await findEmployeeByCode(companyId, employeeCode);
+  }
+
+  if (!employee || employee.companyId.toString() !== companyId.toString()) {
+    throw new ApiError(404, "Employee not found.");
+  }
+
+  return employee;
+};
+
+const resolveLeaveType = async (companyId, payload = {}) => {
+  const leaveTypeId = payload.leaveTypeId;
+  const leaveTypeCode = payload.leaveTypeCode || payload.leaveCode;
+
+  let leaveType = null;
+
+  if (leaveTypeId) {
+    leaveType = await findLeaveTypeById(leaveTypeId);
+  }
+
+  if (!leaveType && leaveTypeCode) {
+    leaveType = await findLeaveTypeByCode(companyId, leaveTypeCode);
+  }
+
+  ensureSameCompany(companyId, leaveType, "Leave type not found.");
+
+  return leaveType;
+};
+
+const resolveLeavePolicy = async (companyId, payload = {}) => {
+  const leavePolicyId = payload.leavePolicyId;
+  const leavePolicyCode = payload.leavePolicyCode || payload.policyCode;
+
+  if (!leavePolicyId && !leavePolicyCode) return null;
+
+  let leavePolicy = null;
+
+  if (leavePolicyId) {
+    leavePolicy = await findLeavePolicyById(leavePolicyId);
+  }
+
+  if (!leavePolicy && leavePolicyCode) {
+    leavePolicy = await findLeavePolicyByCode(companyId, leavePolicyCode);
+  }
+
+  ensureSameCompany(companyId, leavePolicy, "Leave policy not found.");
+
+  return leavePolicy;
+};
+
+const normalizePolicyRules = async (companyId, rules = []) => {
+  const normalizedRules = [];
+
+  for (const rule of rules) {
+    const leaveType = await resolveLeaveType(companyId, rule);
+
+    normalizedRules.push({
+      ...rule,
+      leaveTypeId: leaveType._id,
+      leaveTypeCode: undefined,
+      leaveCode: undefined,
+    });
+  }
+
+  return normalizedRules;
+};
+
+const normalizeApprovalLevels = async (companyId, approvalLevels = []) => {
+  const normalizedLevels = [];
+
+  for (const level of approvalLevels) {
+    let approverEmployeeId = level.approverEmployeeId || null;
+
+    if (level.approverType === "specific_employee") {
+      if (!approverEmployeeId && level.approverEmployeeCode) {
+        const employee = await resolveEmployee(companyId, {
+          employeeCode: level.approverEmployeeCode,
+        });
+
+        approverEmployeeId = employee._id;
+      }
+
+      if (!approverEmployeeId) {
+        throw new ApiError(
+          400,
+          "approverEmployeeId or approverEmployeeCode is required for specific employee approver."
+        );
+      }
+    }
+
+    normalizedLevels.push({
+      ...level,
+      approverEmployeeId,
+      approverEmployeeCode: undefined,
+    });
+  }
+
+  return normalizedLevels;
 };
 
 /* ================= LEAVE TYPE ================= */
@@ -169,13 +281,16 @@ export const createLeavePolicyService = async (currentUser, payload) => {
     throw new ApiError(409, "Leave policy code already exists.");
   }
 
-  for (const rule of payload.rules || []) {
-    const leaveType = await findLeaveTypeById(rule.leaveTypeId);
-    ensureSameCompany(companyId, leaveType, "Invalid leave type in policy.");
-  }
+  const rules = await normalizePolicyRules(companyId, payload.rules || []);
+  const approvalLevels = await normalizeApprovalLevels(
+    companyId,
+    payload.approvalLevels || []
+  );
 
   return createLeavePolicyRecord({
     ...payload,
+    rules,
+    approvalLevels,
     companyId,
     createdBy: currentUser._id,
   });
@@ -216,8 +331,21 @@ export const updateLeavePolicyService = async (currentUser, id, payload) => {
 
   ensureSameCompany(companyId, policy, "Leave policy not found.");
 
+  const updatePayload = { ...payload };
+
+  if (payload.rules) {
+    updatePayload.rules = await normalizePolicyRules(companyId, payload.rules);
+  }
+
+  if (payload.approvalLevels) {
+    updatePayload.approvalLevels = await normalizeApprovalLevels(
+      companyId,
+      payload.approvalLevels
+    );
+  }
+
   return updateLeavePolicyById(id, {
-    ...payload,
+    ...updatePayload,
     updatedBy: currentUser._id,
   });
 };
@@ -241,15 +369,18 @@ export const createLeaveBalanceService = async (currentUser, payload) => {
 
   const companyId = getCompanyId(currentUser);
 
-  await validateEmployee(companyId, payload.employeeId);
+  const employee = await resolveEmployee(companyId, payload);
+  const leaveType = await resolveLeaveType(companyId, payload);
+  const leavePolicy = await resolveLeavePolicy(companyId, payload);
 
-  const leaveType = await findLeaveTypeById(payload.leaveTypeId);
-  ensureSameCompany(companyId, leaveType, "Leave type not found.");
+  const employeeId = employee._id;
+  const leaveTypeId = leaveType._id;
+  const leavePolicyId = leavePolicy?._id || null;
 
   const exists = await findLeaveBalance({
     companyId,
-    employeeId: payload.employeeId,
-    leaveTypeId: payload.leaveTypeId,
+    employeeId,
+    leaveTypeId,
     year: payload.year,
   });
 
@@ -259,10 +390,21 @@ export const createLeaveBalanceService = async (currentUser, payload) => {
 
   const availableBalance =
     payload.availableBalance ??
-    payload.openingBalance + payload.credited + payload.carryForward - payload.availed;
+    payload.openingBalance +
+      payload.credited +
+      payload.carryForward -
+      payload.availed;
 
   return createLeaveBalanceRecord({
     ...payload,
+    employeeId,
+    leaveTypeId,
+    leavePolicyId,
+    employeeCode: undefined,
+    leaveTypeCode: undefined,
+    leaveCode: undefined,
+    leavePolicyCode: undefined,
+    policyCode: undefined,
     companyId,
     availableBalance,
     createdBy: currentUser._id,
@@ -277,9 +419,31 @@ export const getLeaveBalancesService = async (currentUser, query = {}) => {
 
   const filter = { companyId };
 
-  if (query.employeeId) filter.employeeId = query.employeeId;
-  if (query.leaveTypeId) filter.leaveTypeId = query.leaveTypeId;
-  if (query.year) filter.year = Number(query.year);
+  if (query.employeeId) {
+    filter.employeeId = query.employeeId;
+  }
+
+  if (query.employeeCode) {
+    const employee = await resolveEmployee(companyId, query.employeeCode);
+    filter.employeeId = employee._id;
+  }
+
+  if (query.leaveTypeId) {
+    filter.leaveTypeId = query.leaveTypeId;
+  }
+
+  if (query.leaveTypeCode || query.leaveCode) {
+    const leaveType = await resolveLeaveType(companyId, {
+      leaveTypeCode: query.leaveTypeCode,
+      leaveCode: query.leaveCode,
+    });
+
+    filter.leaveTypeId = leaveType._id;
+  }
+
+  if (query.year) {
+    filter.year = Number(query.year);
+  }
 
   return listLeaveBalances({
     filter,
@@ -297,8 +461,31 @@ export const updateLeaveBalanceService = async (currentUser, id, payload) => {
 
   ensureSameCompany(companyId, balance, "Leave balance not found.");
 
+  const updatePayload = { ...payload };
+
+  if (payload.employeeId || payload.employeeCode) {
+    const employee = await resolveEmployee(companyId, payload);
+    updatePayload.employeeId = employee._id;
+  }
+
+  if (payload.leaveTypeId || payload.leaveTypeCode || payload.leaveCode) {
+    const leaveType = await resolveLeaveType(companyId, payload);
+    updatePayload.leaveTypeId = leaveType._id;
+  }
+
+  if (payload.leavePolicyId || payload.leavePolicyCode || payload.policyCode) {
+    const leavePolicy = await resolveLeavePolicy(companyId, payload);
+    updatePayload.leavePolicyId = leavePolicy?._id || null;
+  }
+
+  delete updatePayload.employeeCode;
+  delete updatePayload.leaveTypeCode;
+  delete updatePayload.leaveCode;
+  delete updatePayload.leavePolicyCode;
+  delete updatePayload.policyCode;
+
   return updateLeaveBalanceById(id, {
-    ...payload,
+    ...updatePayload,
     updatedBy: currentUser._id,
   });
 };
@@ -308,10 +495,13 @@ export const updateLeaveBalanceService = async (currentUser, id, payload) => {
 export const applyLeaveService = async (currentUser, payload) => {
   const companyId = getCompanyId(currentUser);
 
-  await validateEmployee(companyId, payload.employeeId);
+  const employee = await resolveEmployee(companyId, payload);
+  const leaveType = await resolveLeaveType(companyId, payload);
+  const leavePolicy = await resolveLeavePolicy(companyId, payload);
 
-  const leaveType = await findLeaveTypeById(payload.leaveTypeId);
-  ensureSameCompany(companyId, leaveType, "Leave type not found.");
+  const employeeId = employee._id;
+  const leaveTypeId = leaveType._id;
+  const leavePolicyId = leavePolicy?._id || null;
 
   const totalDays = calculateLeaveDays(
     payload.fromDate,
@@ -323,8 +513,8 @@ export const applyLeaveService = async (currentUser, payload) => {
 
   const balance = await findLeaveBalance({
     companyId,
-    employeeId: payload.employeeId,
-    leaveTypeId: payload.leaveTypeId,
+    employeeId,
+    leaveTypeId,
     year,
   });
 
@@ -338,6 +528,14 @@ export const applyLeaveService = async (currentUser, payload) => {
 
   const leaveRequest = await createLeaveRequestRecord({
     ...payload,
+    employeeId,
+    leaveTypeId,
+    leavePolicyId,
+    employeeCode: undefined,
+    leaveTypeCode: undefined,
+    leaveCode: undefined,
+    leavePolicyCode: undefined,
+    policyCode: undefined,
     companyId,
     totalDays,
     status: LEAVE_REQUEST_STATUS.PENDING,
@@ -361,9 +559,31 @@ export const getLeaveRequestsService = async (currentUser, query = {}) => {
 
   const filter = { companyId };
 
-  if (query.employeeId) filter.employeeId = query.employeeId;
-  if (query.leaveTypeId) filter.leaveTypeId = query.leaveTypeId;
-  if (query.status) filter.status = query.status;
+  if (query.employeeId) {
+    filter.employeeId = query.employeeId;
+  }
+
+  if (query.employeeCode) {
+    const employee = await resolveEmployee(companyId, query.employeeCode);
+    filter.employeeId = employee._id;
+  }
+
+  if (query.leaveTypeId) {
+    filter.leaveTypeId = query.leaveTypeId;
+  }
+
+  if (query.leaveTypeCode || query.leaveCode) {
+    const leaveType = await resolveLeaveType(companyId, {
+      leaveTypeCode: query.leaveTypeCode,
+      leaveCode: query.leaveCode,
+    });
+
+    filter.leaveTypeId = leaveType._id;
+  }
+
+  if (query.status) {
+    filter.status = query.status;
+  }
 
   return listLeaveRequests({
     filter,
