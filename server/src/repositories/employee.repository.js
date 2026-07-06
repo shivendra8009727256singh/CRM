@@ -7,6 +7,10 @@ import { EmployeeDocument } from "../models/EmployeeDocument.js";
 import { Branch } from "../models/Branch.js";
 import { Department } from "../models/Department.js";
 import { Designation } from "../models/Designation.js";
+import { Shift } from "../models/Shift.js";
+import { AttendancePolicy } from "../models/AttendancePolicy.js";
+import { LeavePolicy } from "../models/LeavePolicy.js";
+import { SalaryStructure } from "../models/SalaryStructure.js";
 
 /* ---------------- Employee Core ---------------- */
 
@@ -19,9 +23,11 @@ export const findEmployeeById = async (id) => {
 };
 
 export const findEmployeeByCode = async (companyId, employeeCode) => {
+  if (!employeeCode) return null;
+
   return Employee.findOne({
     companyId,
-    employeeCode,
+    employeeCode: employeeCode.toUpperCase().trim(),
   });
 };
 
@@ -111,6 +117,85 @@ export const findDepartmentById = async (id) => {
 
 export const findDesignationById = async (id) => {
   return Designation.findById(id);
+};
+
+export const findBranchByCode = async (companyId, branchCode) => {
+  if (!branchCode) return null;
+
+  return Branch.findOne({
+    companyId,
+    branchCode: branchCode.toUpperCase().trim(),
+  });
+};
+
+export const findDepartmentByCode = async (companyId, departmentCode) => {
+  if (!departmentCode) return null;
+
+  return Department.findOne({
+    companyId,
+    departmentCode: departmentCode.toUpperCase().trim(),
+  });
+};
+
+export const findDesignationByCode = async (companyId, designationCode) => {
+  if (!designationCode) return null;
+
+  return Designation.findOne({
+    companyId,
+    designationCode: designationCode.toUpperCase().trim(),
+  });
+};
+
+export const findShiftById = async (id) => {
+  return Shift.findById(id);
+};
+
+export const findShiftByCode = async (companyId, shiftCode) => {
+  if (!shiftCode) return null;
+
+  return Shift.findOne({
+    companyId,
+    shiftCode: shiftCode.toUpperCase().trim(),
+  });
+};
+
+export const findAttendancePolicyById = async (id) => {
+  return AttendancePolicy.findById(id);
+};
+
+export const findAttendancePolicyByCode = async (companyId, policyCode) => {
+  if (!policyCode) return null;
+
+  return AttendancePolicy.findOne({
+    companyId,
+    policyCode: policyCode.toUpperCase().trim(),
+  });
+};
+
+export const findLeavePolicyById = async (id) => {
+  return LeavePolicy.findById(id);
+};
+
+export const findLeavePolicyByCode = async (companyId, policyCode) => {
+  if (!policyCode) return null;
+
+  return LeavePolicy.findOne({
+    companyId,
+    policyCode: policyCode.toUpperCase().trim(),
+  });
+};
+
+export const findSalaryStructureById = async (id) => {
+  return SalaryStructure.findById(id);
+};
+
+export const findSalaryStructureByCode = async (companyId, structureCode) => {
+  if (!structureCode) return null;
+
+  return SalaryStructure.findOne({
+    companyId,
+    structureCode: structureCode.toUpperCase().trim(),
+  });
 };
 
 /* ---------------- Family ---------------- */
