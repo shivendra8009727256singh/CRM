@@ -1,6 +1,10 @@
 import { ApiError } from "../utils/apiError.js";
 import { ROLES } from "../constants/roles.js";
-import { findEmployeeById } from "../repositories/employee.repository.js";
+
+import {
+  findEmployeeById,
+  findEmployeeByCode,
+} from "../repositories/employee.repository.js";
 
 import {
   createMeetingRecord,
@@ -12,6 +16,17 @@ import {
   countMeetings,
   getUpcomingMeetings,
 } from "../repositories/meeting.repository.js";
+
+const isMongoId = (value) => /^[a-fA-F0-9]{24}$/.test(String(value || ""));
+
+const hasValue = (value) => {
+  return value !== undefined && value !== null && value !== "";
+};
+
+const normalizeCode = (value) => {
+  if (!hasValue(value)) return null;
+  return String(value).trim().toUpperCase();
+};
 
 const getCompanyId = (currentUser) => {
   if (!currentUser.companyId) {
@@ -33,10 +48,52 @@ const ensureSameCompany = (companyId, record, message = "Meeting not found.") =>
   }
 };
 
-const validateEmployee = async (companyId, employeeId, message) => {
-  if (!employeeId) return null;
+const resolveMeeting = async (companyId, idOrCode) => {
+  let meeting = null;
 
-  const employee = await findEmployeeById(employeeId);
+  if (isMongoId(idOrCode)) {
+    meeting = await findMeetingById(idOrCode);
+  }
+
+  if (!meeting) {
+    meeting = await findMeetingByCode(companyId, normalizeCode(idOrCode));
+  }
+
+  ensureSameCompany(companyId, meeting, "Meeting not found.");
+
+  return meeting;
+};
+
+const resolveEmployee = async (
+  companyId,
+  payload = {},
+  message = "Employee not found."
+) => {
+  const employeeId =
+    payload.employeeId ||
+    payload.organizerId ||
+    payload.assignedTo;
+
+  const employeeCode = normalizeCode(
+    payload.employeeCode ||
+      payload.organizerCode ||
+      payload.organizerEmployeeCode ||
+      payload.assignedToEmployeeCode
+  );
+
+  if (!hasValue(employeeId) && !employeeCode) {
+    return null;
+  }
+
+  let employee = null;
+
+  if (hasValue(employeeId)) {
+    employee = await findEmployeeById(employeeId);
+  }
+
+  if (!employee && employeeCode) {
+    employee = await findEmployeeByCode(companyId, employeeCode);
+  }
 
   if (!employee || employee.companyId.toString() !== companyId.toString()) {
     throw new ApiError(400, message);
@@ -45,26 +102,103 @@ const validateEmployee = async (companyId, employeeId, message) => {
   return employee;
 };
 
-const validateMeetingEmployees = async (companyId, payload) => {
-  if (payload.organizerId) {
-    await validateEmployee(companyId, payload.organizerId, "Invalid organizer for this company.");
+const normalizeAttendees = async (companyId, attendees = []) => {
+  const normalized = [];
+
+  for (const attendee of attendees) {
+    const employee = await resolveEmployee(
+      companyId,
+      attendee,
+      "Invalid attendee for this company."
+    );
+
+    if (!employee) {
+      continue;
+    }
+
+    normalized.push({
+      employeeId: employee._id,
+      status: attendee.status || "invited",
+    });
   }
 
-  if (payload.attendees?.length) {
-    for (const attendee of payload.attendees) {
-      if (attendee.employeeId) {
-        await validateEmployee(companyId, attendee.employeeId, "Invalid attendee for this company.");
-      }
-    }
+  return normalized;
+};
+
+const normalizeActionItems = async (companyId, actionItems = []) => {
+  const normalized = [];
+
+  for (const item of actionItems) {
+    const row = { ...item };
+
+    const employee = await resolveEmployee(
+      companyId,
+      {
+        assignedTo: item.assignedTo,
+        assignedToEmployeeCode: item.assignedToEmployeeCode || item.employeeCode,
+      },
+      "Invalid action item employee for this company."
+    );
+
+    row.assignedTo = employee?._id || null;
+
+    delete row.assignedToEmployeeCode;
+    delete row.employeeCode;
+
+    normalized.push(row);
   }
 
-  if (payload.actionItems?.length) {
-    for (const item of payload.actionItems) {
-      if (item.assignedTo) {
-        await validateEmployee(companyId, item.assignedTo, "Invalid action item employee for this company.");
-      }
-    }
+  return normalized;
+};
+
+const normalizeMeetingPayload = async (
+  companyId,
+  payload = {},
+  partial = false
+) => {
+  const normalized = { ...payload };
+
+  if (
+    !partial ||
+    "organizerId" in payload ||
+    "organizerCode" in payload ||
+    "organizerEmployeeCode" in payload
+  ) {
+    const organizer = await resolveEmployee(
+      companyId,
+      {
+        organizerId: payload.organizerId,
+        organizerCode: payload.organizerCode,
+        organizerEmployeeCode: payload.organizerEmployeeCode,
+      },
+      "Invalid organizer for this company."
+    );
+
+    normalized.organizerId = organizer?._id || null;
   }
+
+  if (!partial || "attendees" in payload) {
+    normalized.attendees = await normalizeAttendees(
+      companyId,
+      payload.attendees || []
+    );
+  }
+
+  if (!partial || "actionItems" in payload) {
+    normalized.actionItems = await normalizeActionItems(
+      companyId,
+      payload.actionItems || []
+    );
+  }
+
+  if (payload.meetingCode) {
+    normalized.meetingCode = normalizeCode(payload.meetingCode);
+  }
+
+  delete normalized.organizerCode;
+  delete normalized.organizerEmployeeCode;
+
+  return normalized;
 };
 
 export const createMeetingService = async (currentUser, payload) => {
@@ -72,16 +206,25 @@ export const createMeetingService = async (currentUser, payload) => {
 
   const companyId = getCompanyId(currentUser);
 
-  const exists = await findMeetingByCode(companyId, payload.meetingCode);
+  const meetingCode = normalizeCode(payload.meetingCode);
+
+  const exists = await findMeetingByCode(companyId, meetingCode);
 
   if (exists) {
     throw new ApiError(409, "Meeting code already exists.");
   }
 
-  await validateMeetingEmployees(companyId, payload);
+  const normalizedPayload = await normalizeMeetingPayload(
+    companyId,
+    {
+      ...payload,
+      meetingCode,
+    },
+    false
+  );
 
   return createMeetingRecord({
-    ...payload,
+    ...normalizedPayload,
     companyId,
     createdBy: currentUser._id,
   });
@@ -95,14 +238,62 @@ export const getMeetingsService = async (currentUser, query = {}) => {
 
   const filter = { companyId };
 
-  if (query.status) filter.status = query.status;
-  if (query.meetingMode) filter.meetingMode = query.meetingMode;
-  if (query.organizerId) filter.organizerId = query.organizerId;
+  if (query.status) {
+    filter.status = query.status;
+  }
+
+  if (query.meetingMode) {
+    filter.meetingMode = query.meetingMode;
+  }
+
+  if (query.meetingCode) {
+    filter.meetingCode = normalizeCode(query.meetingCode);
+  }
+
+  if (query.organizerId) {
+    filter.organizerId = query.organizerId;
+  }
+
+  if (query.organizerCode || query.organizerEmployeeCode) {
+    const organizer = await resolveEmployee(
+      companyId,
+      {
+        organizerCode: query.organizerCode,
+        organizerEmployeeCode: query.organizerEmployeeCode,
+      },
+      "Organizer not found."
+    );
+
+    filter.organizerId = organizer._id;
+  }
+
+  if (query.attendeeEmployeeId || query.employeeId) {
+    filter["attendees.employeeId"] =
+      query.attendeeEmployeeId || query.employeeId;
+  }
+
+  if (query.attendeeEmployeeCode || query.employeeCode) {
+    const employee = await resolveEmployee(
+      companyId,
+      {
+        employeeCode: query.attendeeEmployeeCode || query.employeeCode,
+      },
+      "Attendee not found."
+    );
+
+    filter["attendees.employeeId"] = employee._id;
+  }
 
   if (query.from || query.to) {
     filter.startDateTime = {};
-    if (query.from) filter.startDateTime.$gte = new Date(query.from);
-    if (query.to) filter.startDateTime.$lte = new Date(query.to);
+
+    if (query.from) {
+      filter.startDateTime.$gte = new Date(query.from);
+    }
+
+    if (query.to) {
+      filter.startDateTime.$lte = new Date(query.to);
+    }
   }
 
   if (query.search) {
@@ -120,56 +311,65 @@ export const getMeetingsService = async (currentUser, query = {}) => {
   });
 };
 
-export const getMeetingByIdService = async (currentUser, id) => {
+export const getMeetingByIdService = async (currentUser, idOrCode) => {
   const companyId = getCompanyId(currentUser);
 
-  const meeting = await findMeetingById(id);
-
-  ensureSameCompany(companyId, meeting);
-
-  return meeting;
+  return resolveMeeting(companyId, idOrCode);
 };
 
-export const updateMeetingService = async (currentUser, id, payload) => {
+export const updateMeetingService = async (currentUser, idOrCode, payload) => {
   ensureMeetingAccess(currentUser);
 
   const companyId = getCompanyId(currentUser);
-  const meeting = await findMeetingById(id);
+  const meeting = await resolveMeeting(companyId, idOrCode);
 
-  ensureSameCompany(companyId, meeting);
+  if (
+    payload.meetingCode &&
+    normalizeCode(payload.meetingCode) !== meeting.meetingCode
+  ) {
+    const exists = await findMeetingByCode(companyId, payload.meetingCode);
 
-  await validateMeetingEmployees(companyId, payload);
+    if (exists && exists._id.toString() !== meeting._id.toString()) {
+      throw new ApiError(409, "Meeting code already exists.");
+    }
+  }
 
-  return updateMeetingById(id, {
-    ...payload,
+  const normalizedPayload = await normalizeMeetingPayload(
+    companyId,
+    payload,
+    true
+  );
+
+  return updateMeetingById(meeting._id, {
+    ...normalizedPayload,
     updatedBy: currentUser._id,
   });
 };
 
-export const updateMeetingStatusService = async (currentUser, id, payload) => {
+export const updateMeetingStatusService = async (
+  currentUser,
+  idOrCode,
+  payload
+) => {
   ensureMeetingAccess(currentUser);
 
   const companyId = getCompanyId(currentUser);
-  const meeting = await findMeetingById(id);
+  const meeting = await resolveMeeting(companyId, idOrCode);
 
-  ensureSameCompany(companyId, meeting);
-
-  return updateMeetingById(id, {
+  return updateMeetingById(meeting._id, {
     status: payload.status,
     remarks: payload.remarks || meeting.remarks,
     updatedBy: currentUser._id,
   });
 };
 
-export const deleteMeetingService = async (currentUser, id) => {
+export const deleteMeetingService = async (currentUser, idOrCode) => {
   ensureMeetingAccess(currentUser);
 
   const companyId = getCompanyId(currentUser);
-  const meeting = await findMeetingById(id);
+  const meeting = await resolveMeeting(companyId, idOrCode);
 
-  ensureSameCompany(companyId, meeting);
-
-  await deleteMeetingById(id);
+  await deleteMeetingById(meeting._id);
 
   return true;
 };

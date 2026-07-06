@@ -6,14 +6,16 @@ import {
 } from "../models/HRMeeting.js";
 
 const objectId = Joi.string().hex().length(24);
+const code = Joi.string().trim().uppercase().min(1).max(50);
 
 const attendeeSchema = Joi.object({
-  employeeId: objectId.allow(null),
+  employeeId: objectId.allow("", null),
+  employeeCode: code.allow("", null),
 
   status: Joi.string()
     .valid("invited", "accepted", "declined", "attended", "absent")
     .default("invited"),
-});
+}).or("employeeId", "employeeCode");
 
 const agendaItemSchema = Joi.object({
   title: Joi.string().trim().allow("", null),
@@ -24,7 +26,9 @@ const agendaItemSchema = Joi.object({
 const actionItemSchema = Joi.object({
   title: Joi.string().trim().required(),
 
-  assignedTo: objectId.allow(null),
+  assignedTo: objectId.allow("", null),
+  assignedToEmployeeCode: code.allow("", null),
+  employeeCode: code.allow("", null),
 
   dueDate: Joi.date().allow(null),
 
@@ -50,7 +54,9 @@ export const createMeetingSchema = Joi.object({
 
   endDateTime: Joi.date().required(),
 
-  organizerId: objectId.allow(null),
+  organizerId: objectId.allow("", null),
+  organizerCode: code.allow("", null),
+  organizerEmployeeCode: code.allow("", null),
 
   attendees: Joi.array().items(attendeeSchema).default([]),
 

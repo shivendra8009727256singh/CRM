@@ -1,5 +1,10 @@
 import { HRMeeting } from "../models/HRMeeting.js";
 
+const normalizeCode = (value) => {
+  if (!value) return value;
+  return String(value).trim().toUpperCase();
+};
+
 export const createMeetingRecord = async (payload) => {
   return HRMeeting.create(payload);
 };
@@ -9,9 +14,11 @@ export const findMeetingById = async (id) => {
 };
 
 export const findMeetingByCode = async (companyId, meetingCode) => {
+  if (!meetingCode) return null;
+
   return HRMeeting.findOne({
     companyId,
-    meetingCode,
+    meetingCode: normalizeCode(meetingCode),
   });
 };
 
@@ -20,9 +27,9 @@ export const listMeetings = async ({ filter, page, limit, sort }) => {
 
   const [rows, total] = await Promise.all([
     HRMeeting.find(filter)
-      .populate("organizerId", "displayName employeeCode")
-      .populate("attendees.employeeId", "displayName employeeCode")
-      .populate("actionItems.assignedTo", "displayName employeeCode")
+      .populate("organizerId", "displayName employeeCode officialEmail mobile")
+      .populate("attendees.employeeId", "displayName employeeCode officialEmail mobile")
+      .populate("actionItems.assignedTo", "displayName employeeCode officialEmail mobile")
       .sort(sort)
       .skip(skip)
       .limit(limit)
@@ -63,7 +70,9 @@ export const getUpcomingMeetings = async (companyId, limit = 10) => {
     startDateTime: { $gte: new Date() },
     status: { $in: ["scheduled", "rescheduled"] },
   })
-    .populate("organizerId", "displayName employeeCode")
+    .populate("organizerId", "displayName employeeCode officialEmail mobile")
+    .populate("attendees.employeeId", "displayName employeeCode officialEmail mobile")
+    .populate("actionItems.assignedTo", "displayName employeeCode officialEmail mobile")
     .sort({ startDateTime: 1 })
     .limit(limit)
     .lean();
