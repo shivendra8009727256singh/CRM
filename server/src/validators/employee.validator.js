@@ -112,6 +112,7 @@ export const createEmployeeSchema = Joi.object({
 
   tags: Joi.array().items(Joi.string().trim()).default([]),
   notes: Joi.string().trim().allow("", null),
+  createLoginAccount: Joi.boolean().default(false),
 });
 
 export const updateEmployeeSchema = createEmployeeSchema.fork(

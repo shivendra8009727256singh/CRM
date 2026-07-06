@@ -179,11 +179,12 @@ export const sendWelcomeEmployeeEmail = async ({
   employeeCode,
   temporaryPassword,
   loginUrl,
+  verifyUrl,
 }) => {
   return sendEmail({
     to,
     subject: `${env.APP_NAME} - Welcome to the HR Portal`,
-    text: `Hello ${name || "User"}, your employee account has been created. Employee Code: ${employeeCode}. Login: ${loginUrl}. Temporary Password: ${temporaryPassword}`,
+    text: `Hello ${name}, your employee account has been created. Employee Code: ${employeeCode}. Verify Email: ${verifyUrl}. Login: ${loginUrl}. Temporary Password: ${temporaryPassword}`,
     html: `<!DOCTYPE html>
 <html>
 <body style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#333">
@@ -197,7 +198,21 @@ export const sendWelcomeEmployeeEmail = async ({
     <p><strong>Temporary Password:</strong> ${temporaryPassword}</p>
   </div>
 
-  <p>Please login and change your password immediately.</p>
+  <p><strong>Step 1:</strong> Verify your email address.</p>
+
+  <p style="margin:24px 0">
+    <a href="${verifyUrl}"
+       style="background:#4F46E5;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">
+      Verify Email
+    </a>
+  </p>
+
+  <p style="color:#666;font-size:13px">
+    Verification link:<br>
+    <span style="word-break:break-all">${verifyUrl}</span>
+  </p>
+
+  <p><strong>Step 2:</strong> After verification, login using your official email and temporary password.</p>
 
   <p style="margin:24px 0">
     <a href="${loginUrl}"
@@ -205,6 +220,8 @@ export const sendWelcomeEmployeeEmail = async ({
       Login Now
     </a>
   </p>
+
+  <p>Please login and change your password immediately.</p>
 
   <p style="color:#666;font-size:13px">
     If you did not expect this email, please contact your HR team.
@@ -214,6 +231,6 @@ export const sendWelcomeEmployeeEmail = async ({
   <p style="color:#999;font-size:12px">${env.APP_NAME}</p>
 </body>
 </html>`,
-    required: false,
+    required: true,
   });
 };

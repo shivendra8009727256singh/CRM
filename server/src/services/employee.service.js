@@ -1,8 +1,25 @@
+import bcrypt from "bcryptjs";
+import crypto from "crypto";
+
+import { env } from "../config/env.js";
 import { ApiError } from "../utils/apiError.js";
-import { ROLES } from "../constants/roles.js";
+import {
+  ROLE_PERMISSIONS,
+  ROLES,
+  USER_STATUS,
+} from "../constants/roles.js";
+
 import { EMPLOYEE_STATUS } from "../models/Employee.js";
 import { Company } from "../models/Company.js";
-import { findUserByEmail, findUserById } from "../repositories/user.repository.js";
+
+import {
+  createUserRecord,
+  deleteUserById,
+  findUserByEmail,
+  findUserById,
+} from "../repositories/user.repository.js";
+
+import { sendWelcomeEmployeeEmail } from "./email.service.js";
 
 import {
   createEmployeeRecord,
@@ -58,6 +75,7 @@ const CODE_FIELDS = [
   "leavePolicyCode",
   "salaryStructureCode",
   "structureCode",
+  "createLoginAccount",
 ];
 
 const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
@@ -127,7 +145,11 @@ const shouldResolveReference = (payload, idField, codeFields = [], partial) => {
   return codeFields.some((field) => hasOwn(payload, field));
 };
 
-const resolveUserReference = async (companyId, payload, { partial = false } = {}) => {
+const resolveUserReference = async (
+  companyId,
+  payload,
+  { partial = false } = {}
+) => {
   const shouldResolve = shouldResolveReference(
     payload,
     "userId",
@@ -135,9 +157,7 @@ const resolveUserReference = async (companyId, payload, { partial = false } = {}
     partial
   );
 
-  if (!shouldResolve) {
-    return;
-  }
+  if (!shouldResolve) return;
 
   const userId = normalizeOptionalId(payload.userId);
   const userEmail = payload.userEmail?.trim().toLowerCase();
@@ -456,11 +476,17 @@ const resolveEmployeeReferences = async (
   await resolveBranchReference(companyId, resolved, payload, { partial });
   await resolveDepartmentReference(companyId, resolved, payload, { partial });
   await resolveDesignationReference(companyId, resolved, payload, { partial });
-  await resolveReportingManagerReference(companyId, resolved, payload, { partial });
+  await resolveReportingManagerReference(companyId, resolved, payload, {
+    partial,
+  });
   await resolveShiftReference(companyId, resolved, payload, { partial });
-  await resolveAttendancePolicyReference(companyId, resolved, payload, { partial });
+  await resolveAttendancePolicyReference(companyId, resolved, payload, {
+    partial,
+  });
   await resolveLeavePolicyReference(companyId, resolved, payload, { partial });
-  await resolveSalaryStructureReference(companyId, resolved, payload, { partial });
+  await resolveSalaryStructureReference(companyId, resolved, payload, {
+    partial,
+  });
 
   return removeHelperFields(resolved);
 };
@@ -489,6 +515,30 @@ const generateEmployeeCode = async (companyId) => {
   return `${companyCode}-EMP-${String(nextNumber).padStart(6, "0")}`;
 };
 
+const generateTemporaryPassword = () => {
+  return `Emp@${crypto.randomBytes(4).toString("hex")}`;
+};
+
+const createEmailVerificationToken = () => {
+  const token = crypto.randomBytes(32).toString("hex");
+
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+  return {
+    token,
+    tokenHash,
+    expiresAt,
+  };
+};
+
+const buildEmployeeDisplayName = (payload) => {
+  return [payload.firstName, payload.middleName, payload.lastName]
+    .filter(Boolean)
+    .join(" ");
+};
+
 const resolveEmployeeFilterReferences = async (companyId, query = {}) => {
   const resolvedQuery = { ...query };
 
@@ -503,7 +553,10 @@ const resolveEmployeeFilterReferences = async (companyId, query = {}) => {
   }
 
   if (query.departmentCode && !query.departmentId) {
-    const department = await findDepartmentByCode(companyId, query.departmentCode);
+    const department = await findDepartmentByCode(
+      companyId,
+      query.departmentCode
+    );
 
     if (!department) {
       throw new ApiError(404, "Department not found.");
@@ -557,7 +610,10 @@ const ensureNoDuplicates = async (
   currentEmployeeId = null
 ) => {
   if (payload.employeeCode) {
-    const existingCode = await findEmployeeByCode(companyId, payload.employeeCode);
+    const existingCode = await findEmployeeByCode(
+      companyId,
+      payload.employeeCode
+    );
 
     if (
       existingCode &&
@@ -616,13 +672,122 @@ export const createEmployeeService = async (currentUser, payload) => {
 
   await ensureNoDuplicates(companyId, finalPayload);
 
+  const shouldCreateLoginAccount = payload.createLoginAccount === true;
+
+  if (shouldCreateLoginAccount && !finalPayload.officialEmail) {
+    throw new ApiError(
+      400,
+      "Official email is required to create employee login account."
+    );
+  }
+
+  if (shouldCreateLoginAccount) {
+    const existingUser = await findUserByEmail(finalPayload.officialEmail);
+
+    if (existingUser) {
+      throw new ApiError(
+        409,
+        "A user account already exists with this official email."
+      );
+    }
+  }
+
   const employee = await createEmployeeRecord({
     ...finalPayload,
     companyId,
     createdBy: currentUser._id,
   });
 
-  return employee;
+  if (!shouldCreateLoginAccount) {
+    return employee;
+  }
+
+  let createdUser = null;
+
+  try {
+    const temporaryPassword = generateTemporaryPassword();
+
+    const passwordHash = await bcrypt.hash(
+      temporaryPassword,
+      env.BCRYPT_ROUNDS
+    );
+
+    const verification = createEmailVerificationToken();
+
+    const displayName =
+      employee.displayName || buildEmployeeDisplayName(finalPayload);
+
+    createdUser = await createUserRecord({
+      companyId,
+      isPlatformUser: false,
+
+      name: displayName,
+      email: finalPayload.officialEmail,
+      mobile: finalPayload.mobile || "",
+
+      passwordHash,
+
+      role: ROLES.EMPLOYEE,
+      permissions: ROLE_PERMISSIONS[ROLES.EMPLOYEE] || [],
+
+      employeeCode: employee.employeeCode,
+      employee: employee._id,
+
+      department: finalPayload.department || "",
+      designation: finalPayload.designation || "",
+
+      status: USER_STATUS.ACTIVE,
+
+      isEmailVerified: false,
+      emailVerificationTokenHash: verification.tokenHash,
+      emailVerificationExpiresAt: verification.expiresAt,
+
+      forcePasswordChange: true,
+
+      createdBy: currentUser._id,
+    });
+
+    await updateEmployeeById(employee._id, {
+      userId: createdUser._id,
+      updatedBy: currentUser._id,
+    });
+
+    const verifyUrl = `${env.CLIENT_ORIGIN}/verify-email?token=${verification.token}`;
+    const loginUrl = `${env.CLIENT_ORIGIN}/login`;
+
+    await sendWelcomeEmployeeEmail({
+      to: createdUser.email,
+      name: createdUser.name,
+      employeeCode: employee.employeeCode,
+      temporaryPassword,
+      loginUrl,
+      verifyUrl,
+    });
+
+    const employeeObj =
+      typeof employee.toObject === "function" ? employee.toObject() : employee;
+
+    return {
+      ...employeeObj,
+      userId: createdUser._id,
+      loginAccountCreated: true,
+      loginEmailSentTo: createdUser.email,
+    };
+  } catch (error) {
+    if (createdUser?._id) {
+      await deleteUserById(createdUser._id);
+    }
+
+    await updateEmployeeById(employee._id, {
+      userId: null,
+      updatedBy: currentUser._id,
+    });
+
+    throw new ApiError(
+      502,
+      `Employee profile was created, but login account/email setup failed. Login user was rolled back. ${error.message}`
+    );
+  }
 };
 
 export const getEmployeesService = async (currentUser, query = {}) => {
