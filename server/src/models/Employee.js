@@ -321,14 +321,12 @@ const employeeSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-employeeSchema.pre("validate", function (next) {
+employeeSchema.pre("validate", function () {
   if (!this.displayName) {
     this.displayName = [this.firstName, this.middleName, this.lastName]
       .filter(Boolean)
       .join(" ");
   }
-
-  next();
 });
 
 employeeSchema.index({ companyId: 1, employeeCode: 1 }, { unique: true });

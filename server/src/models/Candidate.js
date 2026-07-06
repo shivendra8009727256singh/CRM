@@ -267,7 +267,7 @@ const candidateSchema = new mongoose.Schema(
   }
 );
 
-candidateSchema.pre("validate", function (next) {
+candidateSchema.pre("validate", function () {
   this.fullName = [
     this.firstName,
     this.middleName,
@@ -275,8 +275,6 @@ candidateSchema.pre("validate", function (next) {
   ]
     .filter(Boolean)
     .join(" ");
-
-  next();
 });
 
 candidateSchema.index(
