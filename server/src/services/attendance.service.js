@@ -3,7 +3,10 @@ import { ROLES } from "../constants/roles.js";
 import { ATTENDANCE_STATUS, CHECKIN_SOURCE } from "../models/Attendance.js";
 import { REGULARIZATION_STATUS } from "../models/AttendanceRegularization.js";
 
-import { findEmployeeById } from "../repositories/employee.repository.js";
+import {
+  findEmployeeById,
+  findEmployeeByCode,
+} from "../repositories/employee.repository.js";
 
 import {
   createShiftRecord,
@@ -77,7 +80,7 @@ const calculateAttendanceStatus = ({
   shift,
   policy,
 }) => {
-  let totalWorkMinutes = calculateMinutes(checkInTime, checkOutTime);
+  const totalWorkMinutes = calculateMinutes(checkInTime, checkOutTime);
   let lateByMinutes = 0;
   let overtimeMinutes = 0;
   let isLate = false;
@@ -125,8 +128,26 @@ const calculateAttendanceStatus = ({
   };
 };
 
-const validateEmployee = async (companyId, employeeId) => {
-  const employee = await findEmployeeById(employeeId);
+const resolveEmployee = async (companyId, payloadOrCode) => {
+  let employeeId = null;
+  let employeeCode = null;
+
+  if (typeof payloadOrCode === "string") {
+    employeeCode = payloadOrCode;
+  } else {
+    employeeId = payloadOrCode.employeeId;
+    employeeCode = payloadOrCode.employeeCode;
+  }
+
+  let employee = null;
+
+  if (employeeId) {
+    employee = await findEmployeeById(employeeId);
+  }
+
+  if (!employee && employeeCode) {
+    employee = await findEmployeeByCode(companyId, employeeCode);
+  }
 
   if (!employee || employee.companyId.toString() !== companyId.toString()) {
     throw new ApiError(404, "Employee not found.");
@@ -135,19 +156,43 @@ const validateEmployee = async (companyId, employeeId) => {
   return employee;
 };
 
-const validateShift = async (companyId, shiftId) => {
-  if (!shiftId) return null;
+const resolveShift = async (companyId, payload = {}) => {
+  const shiftId = payload.shiftId;
+  const shiftCode = payload.shiftCode;
 
-  const shift = await findShiftById(shiftId);
+  if (!shiftId && !shiftCode) return null;
+
+  let shift = null;
+
+  if (shiftId) {
+    shift = await findShiftById(shiftId);
+  }
+
+  if (!shift && shiftCode) {
+    shift = await findShiftByCode(companyId, shiftCode);
+  }
+
   ensureSameCompany(companyId, shift, "Shift not found.");
 
   return shift;
 };
 
-const validatePolicy = async (companyId, policyId) => {
-  if (!policyId) return null;
+const resolvePolicy = async (companyId, payload = {}) => {
+  const policyId = payload.attendancePolicyId;
+  const policyCode = payload.attendancePolicyCode || payload.policyCode;
 
-  const policy = await findAttendancePolicyById(policyId);
+  if (!policyId && !policyCode) return null;
+
+  let policy = null;
+
+  if (policyId) {
+    policy = await findAttendancePolicyById(policyId);
+  }
+
+  if (!policy && policyCode) {
+    policy = await findAttendancePolicyByCode(companyId, policyCode);
+  }
+
   ensureSameCompany(companyId, policy, "Attendance policy not found.");
 
   return policy;
@@ -304,12 +349,19 @@ export const deleteAttendancePolicyService = async (currentUser, id) => {
 export const checkInService = async (currentUser, payload) => {
   const companyId = getCompanyId(currentUser);
 
-  await validateEmployee(companyId, payload.employeeId);
+  const employee = await resolveEmployee(companyId, payload);
+  const shift = await resolveShift(companyId, payload);
+  const policy = await resolvePolicy(companyId, payload);
+
+  const employeeId = employee._id;
+  const shiftId = shift?._id || null;
+  const attendancePolicyId = policy?._id || null;
 
   const attendanceDate = normalizeDate(payload.attendanceDate);
+
   const existing = await findAttendanceByEmployeeAndDate(
     companyId,
-    payload.employeeId,
+    employeeId,
     attendanceDate
   );
 
@@ -317,17 +369,14 @@ export const checkInService = async (currentUser, payload) => {
     throw new ApiError(409, "Employee already checked in for this date.");
   }
 
-  const shift = await validateShift(companyId, payload.shiftId);
-  const policy = await validatePolicy(companyId, payload.attendancePolicyId);
-
   if (existing) {
     return updateAttendanceById(existing._id, {
       checkInTime: payload.checkInTime || new Date(),
       checkInSource: payload.checkInSource || CHECKIN_SOURCE.WEB,
       checkInLocation: payload.checkInLocation || {},
       checkInSelfie: payload.checkInSelfie || "",
-      shiftId: payload.shiftId || existing.shiftId,
-      attendancePolicyId: payload.attendancePolicyId || existing.attendancePolicyId,
+      shiftId: shiftId || existing.shiftId,
+      attendancePolicyId: attendancePolicyId || existing.attendancePolicyId,
       status: ATTENDANCE_STATUS.PRESENT,
       remarks: payload.remarks || existing.remarks,
       updatedBy: currentUser._id,
@@ -343,10 +392,10 @@ export const checkInService = async (currentUser, payload) => {
 
   return createAttendanceRecord({
     companyId,
-    employeeId: payload.employeeId,
+    employeeId,
     attendanceDate,
-    shiftId: payload.shiftId || null,
-    attendancePolicyId: payload.attendancePolicyId || null,
+    shiftId,
+    attendancePolicyId,
     checkInTime: payload.checkInTime || new Date(),
     checkInSource: payload.checkInSource || CHECKIN_SOURCE.WEB,
     checkInLocation: payload.checkInLocation || {},
@@ -362,13 +411,14 @@ export const checkInService = async (currentUser, payload) => {
 export const checkOutService = async (currentUser, payload) => {
   const companyId = getCompanyId(currentUser);
 
-  await validateEmployee(companyId, payload.employeeId);
+  const employee = await resolveEmployee(companyId, payload);
+  const employeeId = employee._id;
 
   const attendanceDate = normalizeDate(payload.attendanceDate);
 
   const attendance = await findAttendanceByEmployeeAndDate(
     companyId,
-    payload.employeeId,
+    employeeId,
     attendanceDate
   );
 
@@ -380,8 +430,13 @@ export const checkOutService = async (currentUser, payload) => {
     throw new ApiError(409, "Employee already checked out for this date.");
   }
 
-  const shift = await validateShift(companyId, attendance.shiftId);
-  const policy = await validatePolicy(companyId, attendance.attendancePolicyId);
+  const shift = attendance.shiftId
+    ? await findShiftById(attendance.shiftId)
+    : null;
+
+  const policy = attendance.attendancePolicyId
+    ? await findAttendancePolicyById(attendance.attendancePolicyId)
+    : null;
 
   const result = calculateAttendanceStatus({
     checkInTime: attendance.checkInTime,
@@ -411,32 +466,50 @@ export const manualAttendanceService = async (currentUser, payload) => {
 
   const companyId = getCompanyId(currentUser);
 
-  await validateEmployee(companyId, payload.employeeId);
+  const employee = await resolveEmployee(companyId, payload);
+  const shift = await resolveShift(companyId, payload);
+  const policy = await resolvePolicy(companyId, payload);
+
+  const employeeId = employee._id;
+  const shiftId = shift?._id || null;
+  const attendancePolicyId = policy?._id || null;
 
   const attendanceDate = normalizeDate(payload.attendanceDate);
 
   const existing = await findAttendanceByEmployeeAndDate(
     companyId,
-    payload.employeeId,
+    employeeId,
     attendanceDate
   );
 
+  const attendancePayload = {
+    employeeId,
+    attendanceDate,
+    shiftId,
+    attendancePolicyId,
+    checkInTime: payload.checkInTime || null,
+    checkOutTime: payload.checkOutTime || null,
+    totalWorkMinutes: payload.totalWorkMinutes || 0,
+    breakMinutes: payload.breakMinutes || 0,
+    overtimeMinutes: payload.overtimeMinutes || 0,
+    lateByMinutes: payload.lateByMinutes || 0,
+    earlyCheckoutMinutes: payload.earlyCheckoutMinutes || 0,
+    status: payload.status,
+    remarks: payload.remarks || "",
+    checkInSource: CHECKIN_SOURCE.MANUAL,
+    checkOutSource: CHECKIN_SOURCE.MANUAL,
+  };
+
   if (existing) {
     return updateAttendanceById(existing._id, {
-      ...payload,
-      attendanceDate,
-      checkInSource: CHECKIN_SOURCE.MANUAL,
-      checkOutSource: CHECKIN_SOURCE.MANUAL,
+      ...attendancePayload,
       updatedBy: currentUser._id,
     });
   }
 
   return createAttendanceRecord({
-    ...payload,
+    ...attendancePayload,
     companyId,
-    attendanceDate,
-    checkInSource: CHECKIN_SOURCE.MANUAL,
-    checkOutSource: CHECKIN_SOURCE.MANUAL,
     createdBy: currentUser._id,
   });
 };
@@ -449,8 +522,18 @@ export const getAttendanceService = async (currentUser, query = {}) => {
 
   const filter = { companyId };
 
-  if (query.employeeId) filter.employeeId = query.employeeId;
-  if (query.status) filter.status = query.status;
+  if (query.employeeId) {
+    filter.employeeId = query.employeeId;
+  }
+
+  if (query.employeeCode) {
+    const employee = await resolveEmployee(companyId, query.employeeCode);
+    filter.employeeId = employee._id;
+  }
+
+  if (query.status) {
+    filter.status = query.status;
+  }
 
   if (query.from || query.to) {
     filter.attendanceDate = {};
@@ -486,7 +569,22 @@ export const updateAttendanceStatusService = async (currentUser, id, payload) =>
 export const createRegularizationService = async (currentUser, payload) => {
   const companyId = getCompanyId(currentUser);
 
-  const attendance = await findAttendanceById(payload.attendanceId);
+  let attendance = null;
+
+  if (payload.attendanceId) {
+    attendance = await findAttendanceById(payload.attendanceId);
+  }
+
+  if (!attendance && (payload.employeeId || payload.employeeCode)) {
+    const employee = await resolveEmployee(companyId, payload);
+    const attendanceDate = normalizeDate(payload.attendanceDate || new Date());
+
+    attendance = await findAttendanceByEmployeeAndDate(
+      companyId,
+      employee._id,
+      attendanceDate
+    );
+  }
 
   ensureSameCompany(companyId, attendance, "Attendance record not found.");
 
@@ -512,8 +610,18 @@ export const getRegularizationsService = async (currentUser, query = {}) => {
 
   const filter = { companyId };
 
-  if (query.employeeId) filter.employeeId = query.employeeId;
-  if (query.status) filter.status = query.status;
+  if (query.employeeId) {
+    filter.employeeId = query.employeeId;
+  }
+
+  if (query.employeeCode) {
+    const employee = await resolveEmployee(companyId, query.employeeCode);
+    filter.employeeId = employee._id;
+  }
+
+  if (query.status) {
+    filter.status = query.status;
+  }
 
   return listRegularizations({
     filter,
@@ -576,19 +684,32 @@ export const getAttendanceDashboardService = async (currentUser) => {
   const companyId = getCompanyId(currentUser);
   const today = normalizeDate(new Date());
 
-  const [
-    present,
-    absent,
-    late,
-    halfDay,
-    onLeave,
-    summary,
-  ] = await Promise.all([
-    countAttendance({ companyId, attendanceDate: today, status: ATTENDANCE_STATUS.PRESENT }),
-    countAttendance({ companyId, attendanceDate: today, status: ATTENDANCE_STATUS.ABSENT }),
-    countAttendance({ companyId, attendanceDate: today, status: ATTENDANCE_STATUS.LATE }),
-    countAttendance({ companyId, attendanceDate: today, status: ATTENDANCE_STATUS.HALF_DAY }),
-    countAttendance({ companyId, attendanceDate: today, status: ATTENDANCE_STATUS.ON_LEAVE }),
+  const [present, absent, late, halfDay, onLeave, summary] = await Promise.all([
+    countAttendance({
+      companyId,
+      attendanceDate: today,
+      status: ATTENDANCE_STATUS.PRESENT,
+    }),
+    countAttendance({
+      companyId,
+      attendanceDate: today,
+      status: ATTENDANCE_STATUS.ABSENT,
+    }),
+    countAttendance({
+      companyId,
+      attendanceDate: today,
+      status: ATTENDANCE_STATUS.LATE,
+    }),
+    countAttendance({
+      companyId,
+      attendanceDate: today,
+      status: ATTENDANCE_STATUS.HALF_DAY,
+    }),
+    countAttendance({
+      companyId,
+      attendanceDate: today,
+      status: ATTENDANCE_STATUS.ON_LEAVE,
+    }),
     todayAttendanceSummary(companyId, today),
   ]);
 
@@ -605,12 +726,15 @@ export const getAttendanceDashboardService = async (currentUser) => {
 
 export const getMonthlyAttendanceService = async (
   currentUser,
-  employeeId,
+  employeeRef,
   query = {}
 ) => {
   const companyId = getCompanyId(currentUser);
 
-  await validateEmployee(companyId, employeeId);
+  const employee = await resolveEmployee(companyId, {
+    employeeId: employeeRef,
+    employeeCode: employeeRef,
+  });
 
   const now = new Date();
   const year = Number(query.year || now.getFullYear());
@@ -620,19 +744,36 @@ export const getMonthlyAttendanceService = async (
   const to = new Date(year, month, 0);
   to.setHours(23, 59, 59, 999);
 
-  const records = await monthlyAttendanceSummary(companyId, employeeId, from, to);
+  const records = await monthlyAttendanceSummary(
+    companyId,
+    employee._id,
+    from,
+    to
+  );
 
   return {
-    employeeId,
+    employeeId: employee._id,
+    employeeCode: employee.employeeCode,
     year,
     month,
     records,
-    totalPresent: records.filter((x) => x.status === ATTENDANCE_STATUS.PRESENT).length,
-    totalAbsent: records.filter((x) => x.status === ATTENDANCE_STATUS.ABSENT).length,
-    totalLate: records.filter((x) => x.status === ATTENDANCE_STATUS.LATE).length,
-    totalHalfDay: records.filter((x) => x.status === ATTENDANCE_STATUS.HALF_DAY).length,
-    totalOnLeave: records.filter((x) => x.status === ATTENDANCE_STATUS.ON_LEAVE).length,
-    totalWorkMinutes: records.reduce((sum, x) => sum + (x.totalWorkMinutes || 0), 0),
-    totalOvertimeMinutes: records.reduce((sum, x) => sum + (x.overtimeMinutes || 0), 0),
+    totalPresent: records.filter((x) => x.status === ATTENDANCE_STATUS.PRESENT)
+      .length,
+    totalAbsent: records.filter((x) => x.status === ATTENDANCE_STATUS.ABSENT)
+      .length,
+    totalLate: records.filter((x) => x.status === ATTENDANCE_STATUS.LATE)
+      .length,
+    totalHalfDay: records.filter((x) => x.status === ATTENDANCE_STATUS.HALF_DAY)
+      .length,
+    totalOnLeave: records.filter((x) => x.status === ATTENDANCE_STATUS.ON_LEAVE)
+      .length,
+    totalWorkMinutes: records.reduce(
+      (sum, x) => sum + (x.totalWorkMinutes || 0),
+      0
+    ),
+    totalOvertimeMinutes: records.reduce(
+      (sum, x) => sum + (x.overtimeMinutes || 0),
+      0
+    ),
   };
 };
