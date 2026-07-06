@@ -1,5 +1,10 @@
 import { HREvent } from "../models/HREvent.js";
 
+const normalizeCode = (value) => {
+  if (!value) return value;
+  return String(value).trim().toUpperCase();
+};
+
 export const createEventRecord = async (payload) => {
   return HREvent.create(payload);
 };
@@ -9,9 +14,11 @@ export const findEventById = async (id) => {
 };
 
 export const findEventByCode = async (companyId, eventCode) => {
+  if (!eventCode) return null;
+
   return HREvent.findOne({
     companyId,
-    eventCode,
+    eventCode: normalizeCode(eventCode),
   });
 };
 
@@ -20,7 +27,7 @@ export const listEvents = async ({ filter, page, limit, sort }) => {
 
   const [rows, total] = await Promise.all([
     HREvent.find(filter)
-      .populate("participants.employeeId", "displayName employeeCode")
+      .populate("participants.employeeId", "displayName employeeCode officialEmail mobile")
       .sort(sort)
       .skip(skip)
       .limit(limit)
@@ -61,6 +68,7 @@ export const getUpcomingEvents = async (companyId, limit = 10) => {
     startDateTime: { $gte: new Date() },
     status: { $in: ["published", "draft"] },
   })
+    .populate("participants.employeeId", "displayName employeeCode officialEmail mobile")
     .sort({ startDateTime: 1 })
     .limit(limit)
     .lean();

@@ -6,14 +6,16 @@ import {
 } from "../models/HREvent.js";
 
 const objectId = Joi.string().hex().length(24);
+const code = Joi.string().trim().uppercase().min(1).max(50);
 
 const participantSchema = Joi.object({
-  employeeId: objectId.allow(null),
+  employeeId: objectId.allow("", null),
+  employeeCode: code.allow("", null),
 
   status: Joi.string()
     .valid("invited", "accepted", "declined", "attended")
     .default("invited"),
-});
+}).or("employeeId", "employeeCode");
 
 export const createEventSchema = Joi.object({
   eventTitle: Joi.string().trim().max(200).required(),
