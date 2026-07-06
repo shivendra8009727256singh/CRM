@@ -2,6 +2,7 @@ import { ApiError } from "../utils/apiError.js";
 import { ROLES } from "../constants/roles.js";
 import { EMPLOYEE_STATUS } from "../models/Employee.js";
 import { Company } from "../models/Company.js";
+import { findUserByEmail, findUserById } from "../repositories/user.repository.js";
 
 import {
   createEmployeeRecord,
@@ -15,8 +16,19 @@ import {
   listEmployees,
 
   findBranchById,
+  findBranchByCode,
   findDepartmentById,
+  findDepartmentByCode,
   findDesignationById,
+  findDesignationByCode,
+  findShiftById,
+  findShiftByCode,
+  findAttendancePolicyById,
+  findAttendancePolicyByCode,
+  findLeavePolicyById,
+  findLeavePolicyByCode,
+  findSalaryStructureById,
+  findSalaryStructureByCode,
 
   upsertEmployeeFamily,
   findEmployeeFamily,
@@ -33,6 +45,30 @@ import {
   countEmployees,
   getUpcomingBirthdays,
 } from "../repositories/employee.repository.js";
+
+const CODE_FIELDS = [
+  "userEmail",
+  "branchCode",
+  "departmentCode",
+  "designationCode",
+  "reportingManagerCode",
+  "shiftCode",
+  "attendancePolicyCode",
+  "leavePolicyCode",
+  "salaryStructureCode",
+];
+
+const REFERENCE_ID_FIELDS = [
+  "userId",
+  "branchId",
+  "departmentId",
+  "designationId",
+  "reportingManagerId",
+  "shiftId",
+  "attendancePolicyId",
+  "leavePolicyId",
+  "salaryStructureId",
+];
 
 const getCompanyId = (currentUser) => {
   if (!currentUser.companyId) {
@@ -61,38 +97,160 @@ const ensureSameCompany = (currentUser, employee) => {
   }
 };
 
-const ensureReferenceBelongsToCompany = async (companyId, payload) => {
-  if (payload.branchId) {
-    const branch = await findBranchById(payload.branchId);
+const normalizeCode = (value) => {
+  if (value === undefined || value === null || value === "") return null;
+  return String(value).trim().toUpperCase();
+};
 
-    if (!branch || branch.companyId.toString() !== companyId.toString()) {
-      throw new ApiError(400, "Invalid branch for this company.");
-    }
+const normalizeOptionalId = (value) => {
+  if (value === undefined || value === null || value === "") return null;
+  return value;
+};
+
+const removeHelperFields = (payload) => {
+  const clean = { ...payload };
+
+  for (const field of CODE_FIELDS) {
+    delete clean[field];
   }
 
-  if (payload.departmentId) {
-    const department = await findDepartmentById(payload.departmentId);
+  return clean;
+};
 
-    if (!department || department.companyId.toString() !== companyId.toString()) {
-      throw new ApiError(400, "Invalid department for this company.");
-    }
+const ensureDocumentCompany = (document, companyId, message) => {
+  if (!document || document.companyId.toString() !== companyId.toString()) {
+    throw new ApiError(400, message);
+  }
+};
+
+const resolveUserReference = async (companyId, payload) => {
+  const userId = normalizeOptionalId(payload.userId);
+  const userEmail = payload.userEmail?.trim().toLowerCase();
+
+  if (!userId && !userEmail) {
+    payload.userId = null;
+    return;
   }
 
-  if (payload.designationId) {
-    const designation = await findDesignationById(payload.designationId);
+  const user = userEmail ? await findUserByEmail(userEmail) : await findUserById(userId);
 
-    if (!designation || designation.companyId.toString() !== companyId.toString()) {
-      throw new ApiError(400, "Invalid designation for this company.");
-    }
+  if (!user || !user.companyId || user.companyId.toString() !== companyId.toString()) {
+    throw new ApiError(400, "Invalid user for this company.");
   }
 
-  if (payload.reportingManagerId) {
-    const manager = await findEmployeeById(payload.reportingManagerId);
+  payload.userId = user._id;
+};
 
-    if (!manager || manager.companyId.toString() !== companyId.toString()) {
-      throw new ApiError(400, "Invalid reporting manager for this company.");
-    }
+const resolveEmployeeReferences = async (companyId, payload) => {
+  const resolved = { ...payload };
+
+  await resolveUserReference(companyId, resolved);
+
+  const branchId = normalizeOptionalId(resolved.branchId);
+  const branchCode = normalizeCode(resolved.branchCode);
+  if (branchId || branchCode) {
+    const branch = branchCode
+      ? await findBranchByCode(companyId, branchCode)
+      : await findBranchById(branchId);
+
+    ensureDocumentCompany(branch, companyId, "Invalid branch for this company.");
+    resolved.branchId = branch._id;
+  } else {
+    resolved.branchId = null;
   }
+
+  const departmentId = normalizeOptionalId(resolved.departmentId);
+  const departmentCode = normalizeCode(resolved.departmentCode);
+  if (departmentId || departmentCode) {
+    const department = departmentCode
+      ? await findDepartmentByCode(companyId, departmentCode)
+      : await findDepartmentById(departmentId);
+
+    ensureDocumentCompany(department, companyId, "Invalid department for this company.");
+    resolved.departmentId = department._id;
+  } else {
+    resolved.departmentId = null;
+  }
+
+  const designationId = normalizeOptionalId(resolved.designationId);
+  const designationCode = normalizeCode(resolved.designationCode);
+  if (designationId || designationCode) {
+    const designation = designationCode
+      ? await findDesignationByCode(companyId, designationCode)
+      : await findDesignationById(designationId);
+
+    ensureDocumentCompany(designation, companyId, "Invalid designation for this company.");
+    resolved.designationId = designation._id;
+  } else {
+    resolved.designationId = null;
+  }
+
+  const reportingManagerId = normalizeOptionalId(resolved.reportingManagerId);
+  const reportingManagerCode = normalizeCode(resolved.reportingManagerCode);
+  if (reportingManagerId || reportingManagerCode) {
+    const manager = reportingManagerCode
+      ? await findEmployeeByCode(companyId, reportingManagerCode)
+      : await findEmployeeById(reportingManagerId);
+
+    ensureDocumentCompany(manager, companyId, "Invalid reporting manager for this company.");
+    resolved.reportingManagerId = manager._id;
+  } else {
+    resolved.reportingManagerId = null;
+  }
+
+  const shiftId = normalizeOptionalId(resolved.shiftId);
+  const shiftCode = normalizeCode(resolved.shiftCode);
+  if (shiftId || shiftCode) {
+    const shift = shiftCode
+      ? await findShiftByCode(companyId, shiftCode)
+      : await findShiftById(shiftId);
+
+    ensureDocumentCompany(shift, companyId, "Invalid shift for this company.");
+    resolved.shiftId = shift._id;
+  } else {
+    resolved.shiftId = null;
+  }
+
+  const attendancePolicyId = normalizeOptionalId(resolved.attendancePolicyId);
+  const attendancePolicyCode = normalizeCode(resolved.attendancePolicyCode);
+  if (attendancePolicyId || attendancePolicyCode) {
+    const attendancePolicy = attendancePolicyCode
+      ? await findAttendancePolicyByCode(companyId, attendancePolicyCode)
+      : await findAttendancePolicyById(attendancePolicyId);
+
+    ensureDocumentCompany(attendancePolicy, companyId, "Invalid attendance policy for this company.");
+    resolved.attendancePolicyId = attendancePolicy._id;
+  } else {
+    resolved.attendancePolicyId = null;
+  }
+
+  const leavePolicyId = normalizeOptionalId(resolved.leavePolicyId);
+  const leavePolicyCode = normalizeCode(resolved.leavePolicyCode);
+  if (leavePolicyId || leavePolicyCode) {
+    const leavePolicy = leavePolicyCode
+      ? await findLeavePolicyByCode(companyId, leavePolicyCode)
+      : await findLeavePolicyById(leavePolicyId);
+
+    ensureDocumentCompany(leavePolicy, companyId, "Invalid leave policy for this company.");
+    resolved.leavePolicyId = leavePolicy._id;
+  } else {
+    resolved.leavePolicyId = null;
+  }
+
+  const salaryStructureId = normalizeOptionalId(resolved.salaryStructureId);
+  const salaryStructureCode = normalizeCode(resolved.salaryStructureCode);
+  if (salaryStructureId || salaryStructureCode) {
+    const salaryStructure = salaryStructureCode
+      ? await findSalaryStructureByCode(companyId, salaryStructureCode)
+      : await findSalaryStructureById(salaryStructureId);
+
+    ensureDocumentCompany(salaryStructure, companyId, "Invalid salary structure for this company.");
+    resolved.salaryStructureId = salaryStructure._id;
+  } else {
+    resolved.salaryStructureId = null;
+  }
+
+  return removeHelperFields(resolved);
 };
 
 const getCompanyCode = async (companyId) => {
@@ -119,6 +277,27 @@ const generateEmployeeCode = async (companyId) => {
   return `${companyCode}-EMP-${String(nextNumber).padStart(6, "0")}`;
 };
 
+const resolveEmployeeFilterReferences = async (companyId, query = {}) => {
+  const resolvedQuery = { ...query };
+
+  if (query.branchCode && !query.branchId) {
+    const branch = await findBranchByCode(companyId, query.branchCode);
+    resolvedQuery.branchId = branch?._id;
+  }
+
+  if (query.departmentCode && !query.departmentId) {
+    const department = await findDepartmentByCode(companyId, query.departmentCode);
+    resolvedQuery.departmentId = department?._id;
+  }
+
+  if (query.designationCode && !query.designationId) {
+    const designation = await findDesignationByCode(companyId, query.designationCode);
+    resolvedQuery.designationId = designation?._id;
+  }
+
+  return resolvedQuery;
+};
+
 const buildEmployeeFilter = (companyId, query = {}) => {
   const filter = {
     companyId,
@@ -143,6 +322,18 @@ const buildEmployeeFilter = (companyId, query = {}) => {
 };
 
 const ensureNoDuplicates = async (companyId, payload, currentEmployeeId = null) => {
+  if (payload.employeeCode) {
+    const existingCode = await findEmployeeByCode(companyId, payload.employeeCode);
+
+    if (
+      existingCode &&
+      (!currentEmployeeId ||
+        existingCode._id.toString() !== currentEmployeeId.toString())
+    ) {
+      throw new ApiError(409, "Employee code already exists.");
+    }
+  }
+
   if (payload.officialEmail) {
     const existingEmail = await findEmployeeByOfficialEmail(
       companyId,
@@ -175,22 +366,21 @@ export const createEmployeeService = async (currentUser, payload) => {
   ensureManageAccess(currentUser);
 
   const companyId = getCompanyId(currentUser);
+  const resolvedPayload = await resolveEmployeeReferences(companyId, payload);
 
-  await ensureReferenceBelongsToCompany(companyId, payload);
-  await ensureNoDuplicates(companyId, payload);
+  const employeeCode = normalizeCode(resolvedPayload.employeeCode) ||
+    await generateEmployeeCode(companyId);
 
-  const employeeCode = await generateEmployeeCode(companyId);
+  const finalPayload = {
+    ...resolvedPayload,
+    employeeCode,
+  };
 
-  const exists = await findEmployeeByCode(companyId, employeeCode);
-
-  if (exists) {
-    throw new ApiError(409, "Employee code already exists. Please retry.");
-  }
+  await ensureNoDuplicates(companyId, finalPayload);
 
   const employee = await createEmployeeRecord({
-    ...payload,
+    ...finalPayload,
     companyId,
-    employeeCode,
     createdBy: currentUser._id,
   });
 
@@ -202,7 +392,8 @@ export const getEmployeesService = async (currentUser, query = {}) => {
 
   const page = Number(query.page || 1);
   const limit = Math.min(Number(query.limit || 10), 100);
-  const filter = buildEmployeeFilter(companyId, query);
+  const resolvedQuery = await resolveEmployeeFilterReferences(companyId, query);
+  const filter = buildEmployeeFilter(companyId, resolvedQuery);
 
   return listEmployees({
     filter,
@@ -237,18 +428,19 @@ export const updateEmployeeService = async (currentUser, id, payload) => {
 
   ensureSameCompany(currentUser, employee);
 
-  await ensureReferenceBelongsToCompany(companyId, payload);
-  await ensureNoDuplicates(companyId, payload, employee._id);
+  const resolvedPayload = await resolveEmployeeReferences(companyId, payload);
 
   if (
-    payload.reportingManagerId &&
-    payload.reportingManagerId.toString() === employee._id.toString()
+    resolvedPayload.reportingManagerId &&
+    resolvedPayload.reportingManagerId.toString() === employee._id.toString()
   ) {
     throw new ApiError(400, "Employee cannot be their own reporting manager.");
   }
 
+  await ensureNoDuplicates(companyId, resolvedPayload, employee._id);
+
   const updated = await updateEmployeeById(id, {
-    ...payload,
+    ...resolvedPayload,
     updatedBy: currentUser._id,
   });
 
