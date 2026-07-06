@@ -5,8 +5,7 @@ import { Holiday } from "../models/Holiday.js";
 
 /* ---------------- Branch ---------------- */
 
-export const createBranch = (payload) =>
-  Branch.create(payload);
+export const createBranch = (payload) => Branch.create(payload);
 
 export const updateBranch = (id, payload) =>
   Branch.findByIdAndUpdate(id, payload, {
@@ -14,23 +13,25 @@ export const updateBranch = (id, payload) =>
     runValidators: true,
   });
 
-export const deleteBranch = (id) =>
-  Branch.findByIdAndDelete(id);
+export const deleteBranch = (id) => Branch.findByIdAndDelete(id);
 
-export const findBranch = (id) =>
-  Branch.findById(id);
+export const findBranch = (id) => Branch.findById(id);
+
+export const findBranchByCode = (companyId, branchCode) => {
+  if (!branchCode) return null;
+
+  return Branch.findOne({
+    companyId,
+    branchCode: String(branchCode).trim().toUpperCase(),
+  });
+};
 
 export const listBranches = (companyId) =>
-  Branch.find({
-    companyId,
-  }).sort({
-    branchName: 1,
-  });
+  Branch.find({ companyId }).sort({ branchName: 1 });
 
 /* ---------------- Department ---------------- */
 
-export const createDepartment = (payload) =>
-  Department.create(payload);
+export const createDepartment = (payload) => Department.create(payload);
 
 export const updateDepartment = (id, payload) =>
   Department.findByIdAndUpdate(id, payload, {
@@ -38,21 +39,25 @@ export const updateDepartment = (id, payload) =>
     runValidators: true,
   });
 
-export const deleteDepartment = (id) =>
-  Department.findByIdAndDelete(id);
+export const deleteDepartment = (id) => Department.findByIdAndDelete(id);
 
-export const findDepartment = (id) =>
-  Department.findById(id);
+export const findDepartment = (id) => Department.findById(id);
+
+export const findDepartmentByCode = (companyId, departmentCode) => {
+  if (!departmentCode) return null;
+
+  return Department.findOne({
+    companyId,
+    departmentCode: String(departmentCode).trim().toUpperCase(),
+  });
+};
 
 export const listDepartments = (companyId) =>
-  Department.find({
-    companyId,
-  }).populate("branchId");
+  Department.find({ companyId }).populate("branchId").sort({ departmentName: 1 });
 
 /* ---------------- Designation ---------------- */
 
-export const createDesignation = (payload) =>
-  Designation.create(payload);
+export const createDesignation = (payload) => Designation.create(payload);
 
 export const updateDesignation = (id, payload) =>
   Designation.findByIdAndUpdate(id, payload, {
@@ -60,21 +65,27 @@ export const updateDesignation = (id, payload) =>
     runValidators: true,
   });
 
-export const deleteDesignation = (id) =>
-  Designation.findByIdAndDelete(id);
+export const deleteDesignation = (id) => Designation.findByIdAndDelete(id);
 
-export const findDesignation = (id) =>
-  Designation.findById(id);
+export const findDesignation = (id) => Designation.findById(id);
+
+export const findDesignationByCode = (companyId, designationCode) => {
+  if (!designationCode) return null;
+
+  return Designation.findOne({
+    companyId,
+    designationCode: String(designationCode).trim().toUpperCase(),
+  });
+};
 
 export const listDesignations = (companyId) =>
-  Designation.find({
-    companyId,
-  }).populate("departmentId");
+  Designation.find({ companyId })
+    .populate("departmentId")
+    .sort({ level: 1, designationName: 1 });
 
 /* ---------------- Holiday ---------------- */
 
-export const createHoliday = (payload) =>
-  Holiday.create(payload);
+export const createHoliday = (payload) => Holiday.create(payload);
 
 export const updateHoliday = (id, payload) =>
   Holiday.findByIdAndUpdate(id, payload, {
@@ -82,17 +93,11 @@ export const updateHoliday = (id, payload) =>
     runValidators: true,
   });
 
-export const deleteHoliday = (id) =>
-  Holiday.findByIdAndDelete(id);
+export const deleteHoliday = (id) => Holiday.findByIdAndDelete(id);
 
-export const findHoliday = (id) =>
-  Holiday.findById(id);
+export const findHoliday = (id) => Holiday.findById(id);
 
 export const listHolidays = (companyId) =>
-  Holiday.find({
-    companyId,
-  })
+  Holiday.find({ companyId })
     .populate("branchId")
-    .sort({
-      date: 1,
-    });
+    .sort({ date: 1 });
