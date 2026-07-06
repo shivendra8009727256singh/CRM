@@ -10,21 +10,27 @@ import { PAYROLL_STATUS } from "../models/PayrollRun.js";
 import { PAYSLIP_STATUS } from "../models/Payslip.js";
 
 const objectId = Joi.string().hex().length(24);
+const code = Joi.string().trim().uppercase().min(1).max(50);
 
 const salaryComponentValueSchema = Joi.object({
-  componentId: objectId.required(),
+  componentId: objectId.allow("", null),
+  componentCode: code.allow("", null),
+
   componentName: Joi.string().trim().allow("", null),
-  componentCode: Joi.string().trim().uppercase().allow("", null),
-  type: Joi.string().valid("earning", "deduction").required(),
+
+  type: Joi.string()
+    .valid(...Object.values(COMPONENT_TYPE))
+    .required(),
+
   amount: Joi.number().min(0).default(0),
-});
+}).or("componentId", "componentCode");
 
 /* ================= SALARY COMPONENT ================= */
 
 export const createSalaryComponentSchema = Joi.object({
   componentName: Joi.string().trim().max(120).required(),
 
-  componentCode: Joi.string().trim().uppercase().max(30).required(),
+  componentCode: code.max(30).required(),
 
   type: Joi.string()
     .valid(...Object.values(COMPONENT_TYPE))
@@ -57,16 +63,20 @@ export const updateSalaryComponentSchema = createSalaryComponentSchema.fork(
 /* ================= SALARY STRUCTURE ================= */
 
 const structureComponentSchema = Joi.object({
-  componentId: objectId.required(),
+  componentId: objectId.allow("", null),
+  componentCode: code.allow("", null),
+
   amount: Joi.number().min(0).default(0),
+
   percentageOfCTC: Joi.number().min(0).default(0),
+
   enabled: Joi.boolean().default(true),
-});
+}).or("componentId", "componentCode");
 
 export const createSalaryStructureSchema = Joi.object({
   structureName: Joi.string().trim().max(120).required(),
 
-  structureCode: Joi.string().trim().uppercase().max(30).required(),
+  structureCode: code.max(30).required(),
 
   description: Joi.string().trim().allow("", null),
 
@@ -91,9 +101,12 @@ export const updateSalaryStructureSchema = createSalaryStructureSchema.fork(
 /* ================= EMPLOYEE SALARY ================= */
 
 export const assignEmployeeSalarySchema = Joi.object({
-  employeeId: objectId.required(),
+  employeeId: objectId.allow("", null),
+  employeeCode: code.allow("", null),
 
-  salaryStructureId: objectId.allow(null),
+  salaryStructureId: objectId.allow("", null),
+  salaryStructureCode: code.allow("", null),
+  structureCode: code.allow("", null),
 
   annualCTC: Joi.number().min(0).default(0),
 
@@ -118,10 +131,10 @@ export const assignEmployeeSalarySchema = Joi.object({
     .default(SALARY_STATUS.ACTIVE),
 
   remarks: Joi.string().trim().allow("", null),
-});
+}).or("employeeId", "employeeCode");
 
 export const updateEmployeeSalarySchema = assignEmployeeSalarySchema.fork(
-  ["employeeId", "effectiveFrom"],
+  ["employeeId", "employeeCode", "effectiveFrom"],
   (schema) => schema.optional()
 );
 
