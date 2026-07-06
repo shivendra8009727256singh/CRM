@@ -3,6 +3,21 @@ import { Candidate } from "../models/Candidate.js";
 import { Interview } from "../models/Interview.js";
 import { OfferLetter } from "../models/OfferLetter.js";
 
+const normalizeCode = (value) => {
+  if (!value) return value;
+  return String(value).trim().toUpperCase();
+};
+
+const normalizeEmail = (value) => {
+  if (!value) return value;
+  return String(value).trim().toLowerCase();
+};
+
+const normalizeText = (value) => {
+  if (!value) return value;
+  return String(value).trim();
+};
+
 /* ---------------- Job Opening ---------------- */
 
 export const createJobOpeningRecord = async (payload) => {
@@ -14,9 +29,11 @@ export const findJobOpeningById = async (id) => {
 };
 
 export const findJobOpeningByCode = async (companyId, jobCode) => {
+  if (!jobCode) return null;
+
   return JobOpening.findOne({
     companyId,
-    jobCode,
+    jobCode: normalizeCode(jobCode),
   });
 };
 
@@ -76,9 +93,11 @@ export const findCandidateById = async (id) => {
 };
 
 export const findCandidateByCode = async (companyId, candidateCode) => {
+  if (!candidateCode) return null;
+
   return Candidate.findOne({
     companyId,
-    candidateCode,
+    candidateCode: normalizeCode(candidateCode),
   });
 };
 
@@ -87,7 +106,7 @@ export const findCandidateByEmail = async (companyId, email) => {
 
   return Candidate.findOne({
     companyId,
-    email: email.toLowerCase(),
+    email: normalizeEmail(email),
   });
 };
 
@@ -96,7 +115,7 @@ export const findCandidateByMobile = async (companyId, mobile) => {
 
   return Candidate.findOne({
     companyId,
-    mobile,
+    mobile: normalizeText(mobile),
   });
 };
 
@@ -192,6 +211,75 @@ export const listInterviews = async ({ filter, page, limit, sort }) => {
   };
 };
 
+/* ---------------- Offer Letter ---------------- */
+
+export const createOfferRecord = async (payload) => {
+  return OfferLetter.create(payload);
+};
+
+export const findOfferById = async (id) => {
+  return OfferLetter.findById(id);
+};
+
+export const findOfferByCandidate = async (companyId, candidateId) => {
+  return OfferLetter.findOne({
+    companyId,
+    candidateId,
+  });
+};
+
+export const findOfferByNumber = async (companyId, offerNumber) => {
+  if (!offerNumber) return null;
+
+  return OfferLetter.findOne({
+    companyId,
+    offerNumber: normalizeCode(offerNumber),
+  });
+};
+
+export const findLastOfferByCompany = async (companyId) => {
+  return OfferLetter.findOne({ companyId })
+    .sort({ createdAt: -1 })
+    .select("offerNumber");
+};
+
+export const updateOfferById = async (id, payload) => {
+  return OfferLetter.findByIdAndUpdate(id, payload, {
+    new: true,
+    runValidators: true,
+  });
+};
+
+export const listOffers = async ({ filter, page, limit, sort }) => {
+  const skip = (page - 1) * limit;
+
+  const [offers, total] = await Promise.all([
+    OfferLetter.find(filter)
+      .populate("candidateId", "fullName candidateCode email mobile status")
+      .populate("jobOpeningId", "jobTitle jobCode")
+      .sort(sort)
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+
+    OfferLetter.countDocuments(filter),
+  ]);
+
+  return {
+    offers,
+    pagination: {
+      total,
+      page,
+      limit,
+      pages: Math.ceil(total / limit),
+    },
+  };
+};
+
+export const deleteOfferById = async (id) => {
+  return OfferLetter.findByIdAndDelete(id);
+};
+
 /* ---------------- Dashboard Helpers ---------------- */
 
 export const countJobOpenings = async (filter) => {
@@ -245,70 +333,4 @@ export const getInterviewsToday = async (companyId) => {
     .populate("jobOpeningId", "jobTitle jobCode")
     .sort({ scheduledDate: 1 })
     .lean();
-};
-/* ---------------- Offer Letter ---------------- */
-
-export const createOfferRecord = async (payload) => {
-  return OfferLetter.create(payload);
-};
-
-export const findOfferById = async (id) => {
-  return OfferLetter.findById(id);
-};
-
-export const findOfferByCandidate = async (companyId, candidateId) => {
-  return OfferLetter.findOne({
-    companyId,
-    candidateId,
-  });
-};
-
-export const findOfferByNumber = async (companyId, offerNumber) => {
-  return OfferLetter.findOne({
-    companyId,
-    offerNumber,
-  });
-};
-
-export const findLastOfferByCompany = async (companyId) => {
-  return OfferLetter.findOne({ companyId })
-    .sort({ createdAt: -1 })
-    .select("offerNumber");
-};
-
-export const updateOfferById = async (id, payload) => {
-  return OfferLetter.findByIdAndUpdate(id, payload, {
-    new: true,
-    runValidators: true,
-  });
-};
-
-export const listOffers = async ({ filter, page, limit, sort }) => {
-  const skip = (page - 1) * limit;
-
-  const [offers, total] = await Promise.all([
-    OfferLetter.find(filter)
-      .populate("candidateId", "fullName candidateCode email mobile status")
-      .populate("jobOpeningId", "jobTitle jobCode")
-      .sort(sort)
-      .skip(skip)
-      .limit(limit)
-      .lean(),
-
-    OfferLetter.countDocuments(filter),
-  ]);
-
-  return {
-    offers,
-    pagination: {
-      total,
-      page,
-      limit,
-      pages: Math.ceil(total / limit),
-    },
-  };
-};
-
-export const deleteOfferById = async (id) => {
-  return OfferLetter.findByIdAndDelete(id);
 };

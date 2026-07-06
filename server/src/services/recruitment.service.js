@@ -1,24 +1,48 @@
 import { ApiError } from "../utils/apiError.js";
-import { ROLES } from "../constants/roles.js";
+import {
+  ROLES,
+  ROLE_PERMISSIONS,
+  USER_STATUS,
+} from "../constants/roles.js";
+
 import { Company } from "../models/Company.js";
+import { Branch } from "../models/Branch.js";
+import { Department } from "../models/Department.js";
+import { Designation } from "../models/Designation.js";
+
 import { CANDIDATE_STATUS } from "../models/Candidate.js";
 import { INTERVIEW_STATUS } from "../models/Interview.js";
+import { OFFER_STATUS } from "../models/OfferLetter.js";
+import { EMPLOYMENT_TYPE, EMPLOYEE_STATUS } from "../models/Employee.js";
+
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { env } from "../config/env.js";
 import { User } from "../models/User.js";
-import { ROLE_PERMISSIONS, USER_STATUS } from "../constants/roles.js";
-import { OFFER_STATUS } from "../models/OfferLetter.js";
-import { EMPLOYMENT_TYPE, EMPLOYEE_STATUS } from "../models/Employee.js";
-import { createEmployeeRecord } from "../repositories/employee.repository.js";
-import {createOfferRecord,
-    findOfferById,
-    findOfferByCandidate,
-    findOfferByNumber,
-    findLastOfferByCompany,
-    updateOfferById,
-    listOffers,
-    deleteOfferById,} from "../repositories/recruitment.repository.js";
+
+import {
+  createEmployeeRecord,
+  findEmployeeById,
+  findEmployeeByCode,
+  findLastEmployeeByCompany,
+} from "../repositories/employee.repository.js";
+
+import {
+  findShiftById,
+  findShiftByCode,
+  findAttendancePolicyById,
+  findAttendancePolicyByCode,
+} from "../repositories/attendance.repository.js";
+
+import {
+  findLeavePolicyById,
+  findLeavePolicyByCode,
+} from "../repositories/leave.repository.js";
+
+import {
+  findSalaryStructureById,
+  findSalaryStructureByCode,
+} from "../repositories/payroll.repository.js";
 
 import {
   createJobOpeningRecord,
@@ -45,19 +69,31 @@ import {
   deleteInterviewById,
   listInterviews,
 
+  createOfferRecord,
+  findOfferById,
+  findOfferByCandidate,
+  findOfferByNumber,
+  findLastOfferByCompany,
+  updateOfferById,
+  listOffers,
+  deleteOfferById,
+
   countJobOpenings,
   countCandidates,
   getRecruitmentFunnel,
   getInterviewsToday,
 } from "../repositories/recruitment.repository.js";
 
-import {
-  findBranchById,
-  findDepartmentById,
-  findDesignationById,
-  findEmployeeById,
-} from "../repositories/employee.repository.js";
 import { sendWelcomeEmployeeEmail } from "./email.service.js";
+
+const isMongoId = (value) => /^[a-fA-F0-9]{24}$/.test(String(value || ""));
+
+const hasValue = (value) => value !== undefined && value !== null && value !== "";
+
+const normalizeCode = (value) => {
+  if (!hasValue(value)) return null;
+  return String(value).trim().toUpperCase();
+};
 
 const getCompanyId = (currentUser) => {
   if (!currentUser.companyId) {
@@ -73,16 +109,18 @@ const ensureRecruitmentAccess = (currentUser) => {
   }
 };
 
-const ensureSameCompanyRecord = (companyId, record, message) => {
+const ensureSameCompanyRecord = (companyId, record, message = "Record not found.") => {
   if (!record || record.companyId.toString() !== companyId.toString()) {
-    throw new ApiError(400, message);
+    throw new ApiError(404, message);
   }
 };
 
 const getCompanyCode = async (companyId) => {
   const company = await Company.findById(companyId).select("companyCode");
 
-  if (!company) throw new ApiError(404, "Company not found.");
+  if (!company) {
+    throw new ApiError(404, "Company not found.");
+  }
 
   return company.companyCode;
 };
@@ -91,7 +129,9 @@ const generateJobCode = async (companyId) => {
   const companyCode = await getCompanyCode(companyId);
   const lastJob = await findLastJobOpeningByCompany(companyId);
 
-  if (!lastJob?.jobCode) return `${companyCode}-JOB-000001`;
+  if (!lastJob?.jobCode) {
+    return `${companyCode}-JOB-000001`;
+  }
 
   const lastNumber = Number(lastJob.jobCode.split("-").pop()) || 0;
   return `${companyCode}-JOB-${String(lastNumber + 1).padStart(6, "0")}`;
@@ -101,95 +141,755 @@ const generateCandidateCode = async (companyId) => {
   const companyCode = await getCompanyCode(companyId);
   const lastCandidate = await findLastCandidateByCompany(companyId);
 
-  if (!lastCandidate?.candidateCode) return `${companyCode}-CAN-000001`;
+  if (!lastCandidate?.candidateCode) {
+    return `${companyCode}-CAN-000001`;
+  }
 
   const lastNumber = Number(lastCandidate.candidateCode.split("-").pop()) || 0;
   return `${companyCode}-CAN-${String(lastNumber + 1).padStart(6, "0")}`;
 };
 
-const validateJobReferences = async (companyId, payload) => {
-  if (payload.branchId) {
-    const branch = await findBranchById(payload.branchId);
-    ensureSameCompanyRecord(companyId, branch, "Invalid branch for this company.");
+const generateOfferNumber = async (companyId) => {
+  const companyCode = await getCompanyCode(companyId);
+  const lastOffer = await findLastOfferByCompany(companyId);
+
+  if (!lastOffer?.offerNumber) {
+    return `${companyCode}-OFFER-000001`;
   }
 
-  if (payload.departmentId) {
-    const department = await findDepartmentById(payload.departmentId);
-    ensureSameCompanyRecord(companyId, department, "Invalid department for this company.");
-  }
-
-  if (payload.designationId) {
-    const designation = await findDesignationById(payload.designationId);
-    ensureSameCompanyRecord(companyId, designation, "Invalid designation for this company.");
-  }
-
-  if (payload.hiringManagerId) {
-    const manager = await findEmployeeById(payload.hiringManagerId);
-    ensureSameCompanyRecord(companyId, manager, "Invalid hiring manager for this company.");
-  }
+  const lastNumber = Number(lastOffer.offerNumber.split("-").pop()) || 0;
+  return `${companyCode}-OFFER-${String(lastNumber + 1).padStart(6, "0")}`;
 };
 
-const validateCandidateReferences = async (companyId, payload) => {
-  const job = await findJobOpeningById(payload.appliedJobId);
-  ensureSameCompanyRecord(companyId, job, "Invalid job opening for this company.");
+const generateEmployeeCode = async (companyId) => {
+  const companyCode = await getCompanyCode(companyId);
+  const lastEmployee = await findLastEmployeeByCompany(companyId);
 
-  if (payload.referredBy) {
-    const referredBy = await findEmployeeById(payload.referredBy);
-    ensureSameCompanyRecord(companyId, referredBy, "Invalid referral employee for this company.");
+  if (!lastEmployee?.employeeCode) {
+    return `${companyCode}-EMP-000001`;
   }
 
-  if (payload.recruiterId) {
-    const recruiter = await findEmployeeById(payload.recruiterId);
-    ensureSameCompanyRecord(companyId, recruiter, "Invalid recruiter for this company.");
-  }
+  const lastNumber = Number(lastEmployee.employeeCode.split("-").pop()) || 0;
+  return `${companyCode}-EMP-${String(lastNumber + 1).padStart(6, "0")}`;
 };
 
-const validateInterviewReferences = async (companyId, payload) => {
-  const candidate = await findCandidateById(payload.candidateId);
-  ensureSameCompanyRecord(companyId, candidate, "Invalid candidate for this company.");
+const generateTempPassword = () => {
+  return `Temp@${crypto.randomBytes(4).toString("hex")}`;
+};
 
-  const job = await findJobOpeningById(payload.jobOpeningId);
-  ensureSameCompanyRecord(companyId, job, "Invalid job opening for this company.");
+/* ================= COMMON RESOLVERS ================= */
 
-  if (candidate.appliedJobId.toString() !== job._id.toString()) {
+const resolveBranch = async (companyId, payload = {}) => {
+  const branchId = payload.branchId;
+  const branchCode = normalizeCode(payload.branchCode);
+
+  if (!hasValue(branchId) && !branchCode) return null;
+
+  let branch = null;
+
+  if (hasValue(branchId)) {
+    branch = await Branch.findById(branchId);
+  }
+
+  if (!branch && branchCode) {
+    branch = await Branch.findOne({ companyId, branchCode });
+  }
+
+  ensureSameCompanyRecord(companyId, branch, "Branch not found.");
+  return branch;
+};
+
+const resolveDepartment = async (companyId, payload = {}) => {
+  const departmentId = payload.departmentId;
+  const departmentCode = normalizeCode(payload.departmentCode);
+
+  if (!hasValue(departmentId) && !departmentCode) return null;
+
+  let department = null;
+
+  if (hasValue(departmentId)) {
+    department = await Department.findById(departmentId);
+  }
+
+  if (!department && departmentCode) {
+    department = await Department.findOne({ companyId, departmentCode });
+  }
+
+  ensureSameCompanyRecord(companyId, department, "Department not found.");
+  return department;
+};
+
+const resolveDesignation = async (companyId, payload = {}) => {
+  const designationId = payload.designationId;
+  const designationCode = normalizeCode(payload.designationCode);
+
+  if (!hasValue(designationId) && !designationCode) return null;
+
+  let designation = null;
+
+  if (hasValue(designationId)) {
+    designation = await Designation.findById(designationId);
+  }
+
+  if (!designation && designationCode) {
+    designation = await Designation.findOne({ companyId, designationCode });
+  }
+
+  ensureSameCompanyRecord(companyId, designation, "Designation not found.");
+  return designation;
+};
+
+const resolveEmployee = async (companyId, payloadOrCode, message = "Employee not found.") => {
+  let employeeId = null;
+  let employeeCode = null;
+
+  if (typeof payloadOrCode === "string") {
+    if (isMongoId(payloadOrCode)) {
+      employeeId = payloadOrCode;
+    } else {
+      employeeCode = payloadOrCode;
+    }
+  } else {
+    employeeId =
+      payloadOrCode.employeeId ||
+      payloadOrCode.hiringManagerId ||
+      payloadOrCode.referredBy ||
+      payloadOrCode.recruiterId ||
+      payloadOrCode.reportingManagerId ||
+      payloadOrCode.interviewerId;
+
+    employeeCode =
+      payloadOrCode.employeeCode ||
+      payloadOrCode.hiringManagerCode ||
+      payloadOrCode.hiringManagerEmployeeCode ||
+      payloadOrCode.referredByEmployeeCode ||
+      payloadOrCode.recruiterCode ||
+      payloadOrCode.recruiterEmployeeCode ||
+      payloadOrCode.reportingManagerCode ||
+      payloadOrCode.reportingManagerEmployeeCode ||
+      payloadOrCode.interviewerEmployeeCode;
+  }
+
+  if (!hasValue(employeeId) && !hasValue(employeeCode)) return null;
+
+  let employee = null;
+
+  if (hasValue(employeeId)) {
+    employee = await findEmployeeById(employeeId);
+  }
+
+  if (!employee && hasValue(employeeCode)) {
+    employee = await findEmployeeByCode(companyId, normalizeCode(employeeCode));
+  }
+
+  ensureSameCompanyRecord(companyId, employee, message);
+  return employee;
+};
+
+const resolveJobOpening = async (companyId, payloadOrRef, required = true) => {
+  let jobId = null;
+  let jobCode = null;
+
+  if (typeof payloadOrRef === "string") {
+    if (isMongoId(payloadOrRef)) {
+      jobId = payloadOrRef;
+    } else {
+      jobCode = payloadOrRef;
+    }
+  } else {
+    jobId = payloadOrRef.appliedJobId || payloadOrRef.jobOpeningId;
+    jobCode = payloadOrRef.jobCode;
+  }
+
+  if (!hasValue(jobId) && !hasValue(jobCode)) {
+    if (required) throw new ApiError(400, "Job opening is required.");
+    return null;
+  }
+
+  let job = null;
+
+  if (hasValue(jobId)) {
+    job = await findJobOpeningById(jobId);
+  }
+
+  if (!job && hasValue(jobCode)) {
+    job = await findJobOpeningByCode(companyId, normalizeCode(jobCode));
+  }
+
+  ensureSameCompanyRecord(companyId, job, "Job opening not found.");
+  return job;
+};
+
+const resolveCandidate = async (companyId, payloadOrRef, required = true) => {
+  let candidateId = null;
+  let candidateCode = null;
+
+  if (typeof payloadOrRef === "string") {
+    if (isMongoId(payloadOrRef)) {
+      candidateId = payloadOrRef;
+    } else {
+      candidateCode = payloadOrRef;
+    }
+  } else {
+    candidateId = payloadOrRef.candidateId;
+    candidateCode = payloadOrRef.candidateCode;
+  }
+
+  if (!hasValue(candidateId) && !hasValue(candidateCode)) {
+    if (required) throw new ApiError(400, "Candidate is required.");
+    return null;
+  }
+
+  let candidate = null;
+
+  if (hasValue(candidateId)) {
+    candidate = await findCandidateById(candidateId);
+  }
+
+  if (!candidate && hasValue(candidateCode)) {
+    candidate = await findCandidateByCode(companyId, normalizeCode(candidateCode));
+  }
+
+  ensureSameCompanyRecord(companyId, candidate, "Candidate not found.");
+  return candidate;
+};
+
+const resolveOffer = async (companyId, idOrNumber) => {
+  let offer = null;
+
+  if (isMongoId(idOrNumber)) {
+    offer = await findOfferById(idOrNumber);
+  }
+
+  if (!offer) {
+    offer = await findOfferByNumber(companyId, normalizeCode(idOrNumber));
+  }
+
+  ensureSameCompanyRecord(companyId, offer, "Offer not found.");
+  return offer;
+};
+
+const resolveShift = async (companyId, payload = {}) => {
+  if (!hasValue(payload.shiftId) && !hasValue(payload.shiftCode)) return null;
+
+  let shift = null;
+
+  if (hasValue(payload.shiftId)) {
+    shift = await findShiftById(payload.shiftId);
+  }
+
+  if (!shift && hasValue(payload.shiftCode)) {
+    shift = await findShiftByCode(companyId, normalizeCode(payload.shiftCode));
+  }
+
+  ensureSameCompanyRecord(companyId, shift, "Shift not found.");
+  return shift;
+};
+
+const resolveLeavePolicy = async (companyId, payload = {}) => {
+  const policyCode =
+    payload.leavePolicyCode || payload.policyCode || payload.leavePolicyCodeValue;
+
+  if (!hasValue(payload.leavePolicyId) && !hasValue(policyCode)) return null;
+
+  let policy = null;
+
+  if (hasValue(payload.leavePolicyId)) {
+    policy = await findLeavePolicyById(payload.leavePolicyId);
+  }
+
+  if (!policy && hasValue(policyCode)) {
+    policy = await findLeavePolicyByCode(companyId, normalizeCode(policyCode));
+  }
+
+  ensureSameCompanyRecord(companyId, policy, "Leave policy not found.");
+  return policy;
+};
+
+const resolveAttendancePolicy = async (companyId, payload = {}) => {
+  const policyCode = payload.attendancePolicyCode || payload.policyCode;
+
+  if (!hasValue(payload.attendancePolicyId) && !hasValue(policyCode)) return null;
+
+  let policy = null;
+
+  if (hasValue(payload.attendancePolicyId)) {
+    policy = await findAttendancePolicyById(payload.attendancePolicyId);
+  }
+
+  if (!policy && hasValue(policyCode)) {
+    policy = await findAttendancePolicyByCode(companyId, normalizeCode(policyCode));
+  }
+
+  ensureSameCompanyRecord(companyId, policy, "Attendance policy not found.");
+  return policy;
+};
+
+const resolveSalaryStructure = async (companyId, payload = {}) => {
+  const structureCode = payload.salaryStructureCode || payload.structureCode;
+
+  if (!hasValue(payload.salaryStructureId) && !hasValue(structureCode)) return null;
+
+  let structure = null;
+
+  if (hasValue(payload.salaryStructureId)) {
+    structure = await findSalaryStructureById(payload.salaryStructureId);
+  }
+
+  if (!structure && hasValue(structureCode)) {
+    structure = await findSalaryStructureByCode(companyId, normalizeCode(structureCode));
+  }
+
+  ensureSameCompanyRecord(companyId, structure, "Salary structure not found.");
+  return structure;
+};
+
+const removeCodeFields = (payload) => {
+  delete payload.branchCode;
+  delete payload.departmentCode;
+  delete payload.designationCode;
+  delete payload.hiringManagerCode;
+  delete payload.hiringManagerEmployeeCode;
+  delete payload.jobCode;
+  delete payload.candidateCode;
+  delete payload.referredByEmployeeCode;
+  delete payload.recruiterCode;
+  delete payload.recruiterEmployeeCode;
+  delete payload.employeeCode;
+  delete payload.reportingManagerCode;
+  delete payload.reportingManagerEmployeeCode;
+  delete payload.shiftCode;
+  delete payload.leavePolicyCode;
+  delete payload.leavePolicyCodeValue;
+  delete payload.attendancePolicyCode;
+  delete payload.salaryStructureCode;
+  delete payload.structureCode;
+  delete payload.policyCode;
+  delete payload.appliedJobIdAlias;
+};
+
+/* ================= NORMALIZERS ================= */
+
+const normalizeJobPayload = async (companyId, payload) => {
+  const normalized = { ...payload };
+
+  if ("branchId" in payload || "branchCode" in payload) {
+    const branch = await resolveBranch(companyId, payload);
+    normalized.branchId = branch?._id || null;
+  }
+
+  if ("departmentId" in payload || "departmentCode" in payload) {
+    const department = await resolveDepartment(companyId, payload);
+    normalized.departmentId = department?._id || null;
+  }
+
+  if ("designationId" in payload || "designationCode" in payload) {
+    const designation = await resolveDesignation(companyId, payload);
+    normalized.designationId = designation?._id || null;
+  }
+
+  if (
+    "hiringManagerId" in payload ||
+    "hiringManagerCode" in payload ||
+    "hiringManagerEmployeeCode" in payload
+  ) {
+    const manager = await resolveEmployee(
+      companyId,
+      {
+        employeeId: payload.hiringManagerId,
+        employeeCode: payload.hiringManagerCode || payload.hiringManagerEmployeeCode,
+      },
+      "Hiring manager not found."
+    );
+
+    normalized.hiringManagerId = manager?._id || null;
+  }
+
+  removeCodeFields(normalized);
+  return normalized;
+};
+
+const normalizeCandidatePayload = async (
+  companyId,
+  payload,
+  existingCandidate = null,
+  requireJob = false
+) => {
+  const normalized = { ...payload };
+
+  const hasJobInput =
+    hasValue(payload.appliedJobId) ||
+    hasValue(payload.jobOpeningId) ||
+    hasValue(payload.jobCode);
+
+  if (requireJob || hasJobInput) {
+    const job = await resolveJobOpening(
+      companyId,
+      {
+        appliedJobId:
+          payload.appliedJobId ||
+          payload.jobOpeningId ||
+          existingCandidate?.appliedJobId,
+        jobCode: payload.jobCode,
+      },
+      true
+    );
+
+    normalized.appliedJobId = job._id;
+  }
+
+  if ("referredBy" in payload || "referredByEmployeeCode" in payload) {
+    const referredBy = await resolveEmployee(
+      companyId,
+      {
+        employeeId: payload.referredBy,
+        employeeCode: payload.referredByEmployeeCode,
+      },
+      "Referral employee not found."
+    );
+
+    normalized.referredBy = referredBy?._id || null;
+  }
+
+  if (
+    "recruiterId" in payload ||
+    "recruiterCode" in payload ||
+    "recruiterEmployeeCode" in payload
+  ) {
+    const recruiter = await resolveEmployee(
+      companyId,
+      {
+        employeeId: payload.recruiterId,
+        employeeCode: payload.recruiterCode || payload.recruiterEmployeeCode,
+      },
+      "Recruiter not found."
+    );
+
+    normalized.recruiterId = recruiter?._id || null;
+  }
+
+  delete normalized.jobOpeningId;
+  removeCodeFields(normalized);
+
+  return normalized;
+};
+
+const normalizePanelMembers = async (companyId, panelMembers = []) => {
+  const normalized = [];
+
+  for (const member of panelMembers) {
+    const item = { ...member };
+
+    if (hasValue(member.employeeId) || hasValue(member.employeeCode)) {
+      const employee = await resolveEmployee(
+        companyId,
+        {
+          employeeId: member.employeeId,
+          employeeCode: member.employeeCode,
+        },
+        "Panel member not found."
+      );
+
+      item.employeeId = employee._id;
+
+      if (!item.name) item.name = employee.displayName;
+      if (!item.email) item.email = employee.officialEmail || employee.personalEmail || "";
+    }
+
+    delete item.employeeCode;
+
+    normalized.push(item);
+  }
+
+  return normalized;
+};
+
+const normalizeFeedback = async (companyId, feedback = []) => {
+  const normalized = [];
+
+  for (const item of feedback) {
+    const row = { ...item };
+
+    const interviewerCode = item.interviewerEmployeeCode || item.employeeCode;
+
+    if (hasValue(item.interviewerId) || hasValue(interviewerCode)) {
+      const employee = await resolveEmployee(
+        companyId,
+        {
+          employeeId: item.interviewerId,
+          employeeCode: interviewerCode,
+        },
+        "Feedback interviewer not found."
+      );
+
+      row.interviewerId = employee._id;
+    }
+
+    delete row.interviewerEmployeeCode;
+    delete row.employeeCode;
+
+    normalized.push(row);
+  }
+
+  return normalized;
+};
+
+const normalizeInterviewPayload = async (
+  companyId,
+  payload,
+  existingInterview = null,
+  requireRefs = false
+) => {
+  const normalized = { ...payload };
+
+  const hasCandidateInput =
+    hasValue(payload.candidateId) || hasValue(payload.candidateCode);
+
+  const hasJobInput =
+    hasValue(payload.jobOpeningId) ||
+    hasValue(payload.appliedJobId) ||
+    hasValue(payload.jobCode);
+
+  let candidate = null;
+  let job = null;
+
+  if (requireRefs || hasCandidateInput) {
+    candidate = await resolveCandidate(
+      companyId,
+      {
+        candidateId: payload.candidateId || existingInterview?.candidateId,
+        candidateCode: payload.candidateCode,
+      },
+      true
+    );
+
+    normalized.candidateId = candidate._id;
+  } else if (existingInterview?.candidateId) {
+    candidate = await findCandidateById(existingInterview.candidateId);
+  }
+
+  if (requireRefs || hasJobInput) {
+    job = await resolveJobOpening(
+      companyId,
+      {
+        appliedJobId:
+          payload.jobOpeningId ||
+          payload.appliedJobId ||
+          existingInterview?.jobOpeningId,
+        jobCode: payload.jobCode,
+      },
+      true
+    );
+
+    normalized.jobOpeningId = job._id;
+  } else if (existingInterview?.jobOpeningId) {
+    job = await findJobOpeningById(existingInterview.jobOpeningId);
+  }
+
+  if (candidate && job && candidate.appliedJobId.toString() !== job._id.toString()) {
     throw new ApiError(400, "Candidate does not belong to this job opening.");
   }
 
-  if (payload.panelMembers?.length) {
-    for (const member of payload.panelMembers) {
-      if (member.employeeId) {
-        const employee = await findEmployeeById(member.employeeId);
-        ensureSameCompanyRecord(companyId, employee, "Invalid panel member for this company.");
-      }
-    }
+  if (payload.panelMembers) {
+    normalized.panelMembers = await normalizePanelMembers(
+      companyId,
+      payload.panelMembers
+    );
   }
+
+  if (payload.feedback) {
+    normalized.feedback = await normalizeFeedback(companyId, payload.feedback);
+  }
+
+  delete normalized.candidateCode;
+  delete normalized.appliedJobId;
+  delete normalized.jobCode;
+
+  return normalized;
 };
 
-const ensureCandidateNoDuplicates = async (companyId, payload, currentId = null) => {
-  if (payload.email) {
-    const existing = await findCandidateByEmail(companyId, payload.email);
+const normalizeOfferPayload = async (
+  companyId,
+  payload,
+  existingOffer = null,
+  requireRefs = false
+) => {
+  const normalized = { ...payload };
 
-    if (existing && (!currentId || existing._id.toString() !== currentId.toString())) {
-      throw new ApiError(409, "Candidate email already exists.");
-    }
+  const hasCandidateInput =
+    hasValue(payload.candidateId) || hasValue(payload.candidateCode);
+
+  const hasJobInput =
+    hasValue(payload.jobOpeningId) ||
+    hasValue(payload.appliedJobId) ||
+    hasValue(payload.jobCode);
+
+  let candidate = null;
+  let job = null;
+
+  if (requireRefs || hasCandidateInput) {
+    candidate = await resolveCandidate(
+      companyId,
+      {
+        candidateId: payload.candidateId || existingOffer?.candidateId,
+        candidateCode: payload.candidateCode,
+      },
+      true
+    );
+
+    normalized.candidateId = candidate._id;
+  } else if (existingOffer?.candidateId) {
+    candidate = await findCandidateById(existingOffer.candidateId);
   }
 
-  if (payload.mobile) {
-    const existing = await findCandidateByMobile(companyId, payload.mobile);
+  if (requireRefs || hasJobInput) {
+    job = await resolveJobOpening(
+      companyId,
+      {
+        appliedJobId:
+          payload.jobOpeningId ||
+          payload.appliedJobId ||
+          existingOffer?.jobOpeningId,
+        jobCode: payload.jobCode,
+      },
+      true
+    );
 
-    if (existing && (!currentId || existing._id.toString() !== currentId.toString())) {
-      throw new ApiError(409, "Candidate mobile already exists.");
-    }
+    normalized.jobOpeningId = job._id;
+  } else if (existingOffer?.jobOpeningId) {
+    job = await findJobOpeningById(existingOffer.jobOpeningId);
   }
+
+  if (candidate && job && candidate.appliedJobId.toString() !== job._id.toString()) {
+    throw new ApiError(400, "Candidate does not belong to this job opening.");
+  }
+
+  delete normalized.candidateCode;
+  delete normalized.appliedJobId;
+  delete normalized.jobCode;
+
+  return {
+    payload: normalized,
+    candidate,
+    job,
+  };
 };
 
-const buildJobFilter = (companyId, query = {}) => {
+const normalizeConversionRefs = async (companyId, payload = {}) => {
+  const normalized = { ...payload };
+
+  if (
+    "reportingManagerId" in payload ||
+    "reportingManagerCode" in payload ||
+    "reportingManagerEmployeeCode" in payload
+  ) {
+    const manager = await resolveEmployee(
+      companyId,
+      {
+        employeeId: payload.reportingManagerId,
+        employeeCode:
+          payload.reportingManagerCode || payload.reportingManagerEmployeeCode,
+      },
+      "Reporting manager not found."
+    );
+
+    normalized.reportingManagerId = manager?._id || null;
+  }
+
+  if ("branchId" in payload || "branchCode" in payload) {
+    const branch = await resolveBranch(companyId, payload);
+    normalized.branchId = branch?._id || null;
+  }
+
+  if ("departmentId" in payload || "departmentCode" in payload) {
+    const department = await resolveDepartment(companyId, payload);
+    normalized.departmentId = department?._id || null;
+  }
+
+  if ("designationId" in payload || "designationCode" in payload) {
+    const designation = await resolveDesignation(companyId, payload);
+    normalized.designationId = designation?._id || null;
+  }
+
+  if ("shiftId" in payload || "shiftCode" in payload) {
+    const shift = await resolveShift(companyId, payload);
+    normalized.shiftId = shift?._id || null;
+  }
+
+  if (
+    "leavePolicyId" in payload ||
+    "leavePolicyCode" in payload ||
+    "policyCode" in payload ||
+    "leavePolicyCodeValue" in payload
+  ) {
+    const leavePolicy = await resolveLeavePolicy(companyId, payload);
+    normalized.leavePolicyId = leavePolicy?._id || null;
+  }
+
+  if ("attendancePolicyId" in payload || "attendancePolicyCode" in payload) {
+    const attendancePolicy = await resolveAttendancePolicy(companyId, payload);
+    normalized.attendancePolicyId = attendancePolicy?._id || null;
+  }
+
+  if (
+    "salaryStructureId" in payload ||
+    "salaryStructureCode" in payload ||
+    "structureCode" in payload
+  ) {
+    const salaryStructure = await resolveSalaryStructure(companyId, payload);
+    normalized.salaryStructureId = salaryStructure?._id || null;
+  }
+
+  removeCodeFields(normalized);
+  return normalized;
+};
+
+/* ================= FILTERS ================= */
+
+const buildJobFilter = async (companyId, query = {}) => {
   const filter = { companyId };
 
   if (query.status) filter.status = query.status;
-  if (query.departmentId) filter.departmentId = query.departmentId;
-  if (query.designationId) filter.designationId = query.designationId;
-  if (query.branchId) filter.branchId = query.branchId;
+
+  if (query.departmentId) {
+    filter.departmentId = query.departmentId;
+  }
+
+  if (query.departmentCode) {
+    const department = await resolveDepartment(companyId, {
+      departmentCode: query.departmentCode,
+    });
+
+    filter.departmentId = department._id;
+  }
+
+  if (query.designationId) {
+    filter.designationId = query.designationId;
+  }
+
+  if (query.designationCode) {
+    const designation = await resolveDesignation(companyId, {
+      designationCode: query.designationCode,
+    });
+
+    filter.designationId = designation._id;
+  }
+
+  if (query.branchId) {
+    filter.branchId = query.branchId;
+  }
+
+  if (query.branchCode) {
+    const branch = await resolveBranch(companyId, {
+      branchCode: query.branchCode,
+    });
+
+    filter.branchId = branch._id;
+  }
+
+  if (query.jobCode) {
+    filter.jobCode = normalizeCode(query.jobCode);
+  }
 
   if (query.search) {
     filter.$or = [
@@ -201,13 +901,41 @@ const buildJobFilter = (companyId, query = {}) => {
   return filter;
 };
 
-const buildCandidateFilter = (companyId, query = {}) => {
+const buildCandidateFilter = async (companyId, query = {}) => {
   const filter = { companyId };
 
   if (query.status) filter.status = query.status;
-  if (query.appliedJobId) filter.appliedJobId = query.appliedJobId;
+
+  if (query.appliedJobId) {
+    filter.appliedJobId = query.appliedJobId;
+  }
+
+  if (query.jobCode) {
+    const job = await resolveJobOpening(companyId, query.jobCode);
+    filter.appliedJobId = job._id;
+  }
+
   if (query.source) filter.source = query.source;
-  if (query.recruiterId) filter.recruiterId = query.recruiterId;
+
+  if (query.recruiterId) {
+    filter.recruiterId = query.recruiterId;
+  }
+
+  if (query.recruiterEmployeeCode || query.recruiterCode) {
+    const recruiter = await resolveEmployee(
+      companyId,
+      {
+        employeeCode: query.recruiterEmployeeCode || query.recruiterCode,
+      },
+      "Recruiter not found."
+    );
+
+    filter.recruiterId = recruiter._id;
+  }
+
+  if (query.candidateCode) {
+    filter.candidateCode = normalizeCode(query.candidateCode);
+  }
 
   if (query.search) {
     filter.$or = [
@@ -221,34 +949,81 @@ const buildCandidateFilter = (companyId, query = {}) => {
   return filter;
 };
 
-const buildInterviewFilter = (companyId, query = {}) => {
+const buildInterviewFilter = async (companyId, query = {}) => {
   const filter = { companyId };
 
   if (query.status) filter.status = query.status;
   if (query.result) filter.result = query.result;
-  if (query.candidateId) filter.candidateId = query.candidateId;
-  if (query.jobOpeningId) filter.jobOpeningId = query.jobOpeningId;
+
+  if (query.candidateId) {
+    filter.candidateId = query.candidateId;
+  }
+
+  if (query.candidateCode) {
+    const candidate = await resolveCandidate(companyId, query.candidateCode);
+    filter.candidateId = candidate._id;
+  }
+
+  if (query.jobOpeningId) {
+    filter.jobOpeningId = query.jobOpeningId;
+  }
+
+  if (query.jobCode) {
+    const job = await resolveJobOpening(companyId, query.jobCode);
+    filter.jobOpeningId = job._id;
+  }
 
   return filter;
 };
 
-/* ---------------- Job Opening ---------------- */
+const buildOfferFilter = async (companyId, query = {}) => {
+  const filter = { companyId };
+
+  if (query.status) filter.status = query.status;
+
+  if (query.candidateId) {
+    filter.candidateId = query.candidateId;
+  }
+
+  if (query.candidateCode) {
+    const candidate = await resolveCandidate(companyId, query.candidateCode);
+    filter.candidateId = candidate._id;
+  }
+
+  if (query.jobOpeningId) {
+    filter.jobOpeningId = query.jobOpeningId;
+  }
+
+  if (query.jobCode) {
+    const job = await resolveJobOpening(companyId, query.jobCode);
+    filter.jobOpeningId = job._id;
+  }
+
+  if (query.offerNumber) {
+    filter.offerNumber = normalizeCode(query.offerNumber);
+  }
+
+  return filter;
+};
+
+/* ================= JOB OPENINGS ================= */
 
 export const createJobOpeningService = async (currentUser, payload) => {
   ensureRecruitmentAccess(currentUser);
 
   const companyId = getCompanyId(currentUser);
-
-  await validateJobReferences(companyId, payload);
+  const normalizedPayload = await normalizeJobPayload(companyId, payload);
 
   const jobCode = await generateJobCode(companyId);
 
   const exists = await findJobOpeningByCode(companyId, jobCode);
 
-  if (exists) throw new ApiError(409, "Job code already exists. Please retry.");
+  if (exists) {
+    throw new ApiError(409, "Job code already exists. Please retry.");
+  }
 
   return createJobOpeningRecord({
-    ...payload,
+    ...normalizedPayload,
     companyId,
     jobCode,
     createdBy: currentUser._id,
@@ -261,84 +1036,84 @@ export const getJobOpeningsService = async (currentUser, query = {}) => {
   const page = Number(query.page || 1);
   const limit = Math.min(Number(query.limit || 10), 100);
 
+  const filter = await buildJobFilter(companyId, query);
+
   return listJobOpenings({
-    filter: buildJobFilter(companyId, query),
+    filter,
     page,
     limit,
     sort: { createdAt: -1 },
   });
 };
 
-export const getJobOpeningByIdService = async (currentUser, id) => {
+export const getJobOpeningByIdService = async (currentUser, idOrCode) => {
   const companyId = getCompanyId(currentUser);
-  const job = await findJobOpeningById(id);
-
-  ensureSameCompanyRecord(companyId, job, "Job opening not found.");
-
-  return job;
+  return resolveJobOpening(companyId, idOrCode);
 };
 
-export const updateJobOpeningService = async (currentUser, id, payload) => {
+export const updateJobOpeningService = async (currentUser, idOrCode, payload) => {
   ensureRecruitmentAccess(currentUser);
 
   const companyId = getCompanyId(currentUser);
-  const job = await findJobOpeningById(id);
+  const job = await resolveJobOpening(companyId, idOrCode);
 
-  ensureSameCompanyRecord(companyId, job, "Job opening not found.");
+  const normalizedPayload = await normalizeJobPayload(companyId, payload);
 
-  await validateJobReferences(companyId, payload);
-
-  return updateJobOpeningById(id, {
-    ...payload,
+  return updateJobOpeningById(job._id, {
+    ...normalizedPayload,
     updatedBy: currentUser._id,
   });
 };
 
-export const updateJobStatusService = async (currentUser, id, payload) => {
+export const updateJobStatusService = async (currentUser, idOrCode, payload) => {
   ensureRecruitmentAccess(currentUser);
 
   const companyId = getCompanyId(currentUser);
-  const job = await findJobOpeningById(id);
+  const job = await resolveJobOpening(companyId, idOrCode);
 
-  ensureSameCompanyRecord(companyId, job, "Job opening not found.");
-
-  return updateJobOpeningById(id, {
+  return updateJobOpeningById(job._id, {
     status: payload.status,
     updatedBy: currentUser._id,
   });
 };
 
-export const deleteJobOpeningService = async (currentUser, id) => {
+export const deleteJobOpeningService = async (currentUser, idOrCode) => {
   ensureRecruitmentAccess(currentUser);
 
   const companyId = getCompanyId(currentUser);
-  const job = await findJobOpeningById(id);
+  const job = await resolveJobOpening(companyId, idOrCode);
 
-  ensureSameCompanyRecord(companyId, job, "Job opening not found.");
-
-  await deleteJobOpeningById(id);
+  await deleteJobOpeningById(job._id);
 
   return true;
 };
 
-/* ---------------- Candidate ---------------- */
+/* ================= CANDIDATES ================= */
 
 export const createCandidateService = async (currentUser, payload) => {
   ensureRecruitmentAccess(currentUser);
 
   const companyId = getCompanyId(currentUser);
 
-  await validateCandidateReferences(companyId, payload);
-  await ensureCandidateNoDuplicates(companyId, payload);
+  const normalizedPayload = await normalizeCandidatePayload(
+    companyId,
+    payload,
+    null,
+    true
+  );
+
+  await ensureCandidateNoDuplicates(companyId, normalizedPayload);
 
   const candidateCode = await generateCandidateCode(companyId);
 
   const exists = await findCandidateByCode(companyId, candidateCode);
 
-  if (exists) throw new ApiError(409, "Candidate code already exists. Please retry.");
+  if (exists) {
+    throw new ApiError(409, "Candidate code already exists. Please retry.");
+  }
 
   return createCandidateRecord({
-    ...payload,
+    ...normalizedPayload,
     companyId,
     candidateCode,
     createdBy: currentUser._id,
@@ -351,91 +1126,91 @@ export const getCandidatesService = async (currentUser, query = {}) => {
   const page = Number(query.page || 1);
   const limit = Math.min(Number(query.limit || 10), 100);
 
+  const filter = await buildCandidateFilter(companyId, query);
+
   return listCandidates({
-    filter: buildCandidateFilter(companyId, query),
+    filter,
     page,
     limit,
     sort: { createdAt: -1 },
   });
 };
 
-export const getCandidateByIdService = async (currentUser, id) => {
+export const getCandidateByIdService = async (currentUser, idOrCode) => {
   const companyId = getCompanyId(currentUser);
-  const candidate = await findCandidateById(id);
-
-  ensureSameCompanyRecord(companyId, candidate, "Candidate not found.");
-
-  return candidate;
+  return resolveCandidate(companyId, idOrCode);
 };
 
-export const updateCandidateService = async (currentUser, id, payload) => {
+export const updateCandidateService = async (currentUser, idOrCode, payload) => {
   ensureRecruitmentAccess(currentUser);
 
   const companyId = getCompanyId(currentUser);
-  const candidate = await findCandidateById(id);
+  const candidate = await resolveCandidate(companyId, idOrCode);
 
-  ensureSameCompanyRecord(companyId, candidate, "Candidate not found.");
+  const normalizedPayload = await normalizeCandidatePayload(
+    companyId,
+    payload,
+    candidate,
+    false
+  );
 
-  if (payload.appliedJobId || payload.referredBy || payload.recruiterId) {
-    await validateCandidateReferences(companyId, {
-      appliedJobId: payload.appliedJobId || candidate.appliedJobId,
-      referredBy: payload.referredBy,
-      recruiterId: payload.recruiterId,
-    });
-  }
+  await ensureCandidateNoDuplicates(companyId, normalizedPayload, candidate._id);
 
-  await ensureCandidateNoDuplicates(companyId, payload, candidate._id);
-
-  return updateCandidateById(id, {
-    ...payload,
+  return updateCandidateById(candidate._id, {
+    ...normalizedPayload,
     updatedBy: currentUser._id,
   });
 };
 
-export const updateCandidateStatusService = async (currentUser, id, payload) => {
+export const updateCandidateStatusService = async (
+  currentUser,
+  idOrCode,
+  payload
+) => {
   ensureRecruitmentAccess(currentUser);
 
   const companyId = getCompanyId(currentUser);
-  const candidate = await findCandidateById(id);
+  const candidate = await resolveCandidate(companyId, idOrCode);
 
-  ensureSameCompanyRecord(companyId, candidate, "Candidate not found.");
-
-  return updateCandidateById(id, {
+  return updateCandidateById(candidate._id, {
     status: payload.status,
     remarks: payload.remarks || candidate.remarks,
     updatedBy: currentUser._id,
   });
 };
 
-export const deleteCandidateService = async (currentUser, id) => {
+export const deleteCandidateService = async (currentUser, idOrCode) => {
   ensureRecruitmentAccess(currentUser);
 
   const companyId = getCompanyId(currentUser);
-  const candidate = await findCandidateById(id);
+  const candidate = await resolveCandidate(companyId, idOrCode);
 
-  ensureSameCompanyRecord(companyId, candidate, "Candidate not found.");
-
-  await deleteCandidateById(id);
+  await deleteCandidateById(candidate._id);
 
   return true;
 };
 
-/* ---------------- Interview ---------------- */
+/* ================= INTERVIEWS ================= */
 
 export const createInterviewService = async (currentUser, payload) => {
   ensureRecruitmentAccess(currentUser);
 
   const companyId = getCompanyId(currentUser);
 
-  await validateInterviewReferences(companyId, payload);
+  const normalizedPayload = await normalizeInterviewPayload(
+    companyId,
+    payload,
+    null,
+    true
+  );
 
   const interview = await createInterviewRecord({
-    ...payload,
+    ...normalizedPayload,
     companyId,
     createdBy: currentUser._id,
   });
 
-  await updateCandidateById(payload.candidateId, {
+  await updateCandidateById(normalizedPayload.candidateId, {
     status: CANDIDATE_STATUS.INTERVIEW_SCHEDULED,
     updatedBy: currentUser._id,
   });
@@ -449,8 +1224,10 @@ export const getInterviewsService = async (currentUser, query = {}) => {
   const page = Number(query.page || 1);
   const limit = Math.min(Number(query.limit || 10), 100);
 
+  const filter = await buildInterviewFilter(companyId, query);
+
   return listInterviews({
-    filter: buildInterviewFilter(companyId, query),
+    filter,
     page,
     limit,
     sort: { scheduledDate: -1 },
@@ -474,16 +1251,15 @@ export const updateInterviewService = async (currentUser, id, payload) => {
 
   ensureSameCompanyRecord(companyId, interview, "Interview not found.");
 
-  if (payload.candidateId || payload.jobOpeningId || payload.panelMembers) {
-    await validateInterviewReferences(companyId, {
-      candidateId: payload.candidateId || interview.candidateId,
-      jobOpeningId: payload.jobOpeningId || interview.jobOpeningId,
-      panelMembers: payload.panelMembers || [],
-    });
-  }
+  const normalizedPayload = await normalizeInterviewPayload(
+    companyId,
+    payload,
+    interview,
+    false
+  );
 
-  return updateInterviewById(id, {
-    ...payload,
+  return updateInterviewById(interview._id, {
+    ...normalizedPayload,
     updatedBy: currentUser._id,
   });
 };
@@ -496,8 +1272,15 @@ export const updateInterviewResultService = async (currentUser, id, payload) => 
 
   ensureSameCompanyRecord(companyId, interview, "Interview not found.");
 
-  const updated = await updateInterviewById(id, {
+  const normalizedPayload = {
     ...payload,
+    feedback: payload.feedback
+      ? await normalizeFeedback(companyId, payload.feedback)
+      : [],
+  };
+
+  const updated = await updateInterviewById(interview._id, {
+    ...normalizedPayload,
     updatedBy: currentUser._id,
   });
 
@@ -524,12 +1307,352 @@ export const deleteInterviewService = async (currentUser, id) => {
 
   ensureSameCompanyRecord(companyId, interview, "Interview not found.");
 
-  await deleteInterviewById(id);
+  await deleteInterviewById(interview._id);
 
   return true;
 };
 
-/* ---------------- Dashboard ---------------- */
+/* ================= OFFER LETTERS ================= */
+
+export const createOfferService = async (currentUser, payload) => {
+  ensureRecruitmentAccess(currentUser);
+
+  const companyId = getCompanyId(currentUser);
+
+  const { payload: normalizedPayload, candidate } = await normalizeOfferPayload(
+    companyId,
+    payload,
+    null,
+    true
+  );
+
+  const existingOffer = await findOfferByCandidate(companyId, candidate._id);
+
+  if (existingOffer) {
+    throw new ApiError(409, "Offer already exists for this candidate.");
+  }
+
+  const offerNumber = await generateOfferNumber(companyId);
+
+  const offerExists = await findOfferByNumber(companyId, offerNumber);
+
+  if (offerExists) {
+    throw new ApiError(409, "Offer number already exists. Please retry.");
+  }
+
+  const offer = await createOfferRecord({
+    ...normalizedPayload,
+    companyId,
+    offerNumber,
+    status: OFFER_STATUS.DRAFT,
+    createdBy: currentUser._id,
+  });
+
+  await updateCandidateById(candidate._id, {
+    status: CANDIDATE_STATUS.OFFER_SENT,
+    updatedBy: currentUser._id,
+  });
+
+  return offer;
+};
+
+export const getOffersService = async (currentUser, query = {}) => {
+  const companyId = getCompanyId(currentUser);
+
+  const page = Number(query.page || 1);
+  const limit = Math.min(Number(query.limit || 10), 100);
+
+  const filter = await buildOfferFilter(companyId, query);
+
+  return listOffers({
+    filter,
+    page,
+    limit,
+    sort: { createdAt: -1 },
+  });
+};
+
+export const getOfferByIdService = async (currentUser, idOrNumber) => {
+  const companyId = getCompanyId(currentUser);
+  return resolveOffer(companyId, idOrNumber);
+};
+
+export const updateOfferService = async (currentUser, idOrNumber, payload) => {
+  ensureRecruitmentAccess(currentUser);
+
+  const companyId = getCompanyId(currentUser);
+  const offer = await resolveOffer(companyId, idOrNumber);
+
+  if (offer.status === OFFER_STATUS.ACCEPTED) {
+    throw new ApiError(400, "Accepted offer cannot be edited.");
+  }
+
+  const { payload: normalizedPayload } = await normalizeOfferPayload(
+    companyId,
+    payload,
+    offer,
+    false
+  );
+
+  return updateOfferById(offer._id, {
+    ...normalizedPayload,
+    updatedBy: currentUser._id,
+  });
+};
+
+export const updateOfferStatusService = async (currentUser, idOrNumber, payload) => {
+  ensureRecruitmentAccess(currentUser);
+
+  const companyId = getCompanyId(currentUser);
+  const offer = await resolveOffer(companyId, idOrNumber);
+
+  const updatePayload = {
+    status: payload.status,
+    remarks: payload.remarks || offer.remarks,
+    updatedBy: currentUser._id,
+  };
+
+  if (payload.status === OFFER_STATUS.ACCEPTED) {
+    updatePayload.acceptedAt = new Date();
+  }
+
+  if (payload.status === OFFER_STATUS.REJECTED) {
+    updatePayload.rejectedAt = new Date();
+  }
+
+  const updated = await updateOfferById(offer._id, updatePayload);
+
+  if (payload.status === OFFER_STATUS.ACCEPTED) {
+    await updateCandidateById(offer.candidateId, {
+      status: CANDIDATE_STATUS.OFFER_ACCEPTED,
+      updatedBy: currentUser._id,
+    });
+  }
+
+  return updated;
+};
+
+export const acceptOfferService = async (currentUser, candidateRef, payload) => {
+  ensureRecruitmentAccess(currentUser);
+
+  const companyId = getCompanyId(currentUser);
+  const candidate = await resolveCandidate(companyId, candidateRef);
+
+  const offer = await findOfferByCandidate(companyId, candidate._id);
+
+  if (!offer) {
+    throw new ApiError(404, "Offer not found for this candidate.");
+  }
+
+  const updated = await updateOfferById(offer._id, {
+    status: OFFER_STATUS.ACCEPTED,
+    joiningDate: payload.joiningDate,
+    acceptedAt: new Date(),
+    updatedBy: currentUser._id,
+  });
+
+  await updateCandidateById(candidate._id, {
+    status: CANDIDATE_STATUS.OFFER_ACCEPTED,
+    updatedBy: currentUser._id,
+  });
+
+  return updated;
+};
+
+export const deleteOfferService = async (currentUser, idOrNumber) => {
+  ensureRecruitmentAccess(currentUser);
+
+  const companyId = getCompanyId(currentUser);
+  const offer = await resolveOffer(companyId, idOrNumber);
+
+  if (offer.status === OFFER_STATUS.ACCEPTED) {
+    throw new ApiError(400, "Accepted offer cannot be deleted.");
+  }
+
+  await deleteOfferById(offer._id);
+
+  return true;
+};
+
+/* ================= CANDIDATE CONVERSION ================= */
+
+export const getCandidateConversionPreviewService = async (
+  currentUser,
+  candidateRef
+) => {
+  const companyId = getCompanyId(currentUser);
+
+  const candidate = await resolveCandidate(companyId, candidateRef);
+
+  const offer = await findOfferByCandidate(companyId, candidate._id);
+
+  if (!offer) {
+    throw new ApiError(404, "Offer not found.");
+  }
+
+  return {
+    candidate,
+    offer,
+    canConvert: candidate.status === CANDIDATE_STATUS.OFFER_ACCEPTED,
+  };
+};
+
+export const convertCandidateToEmployeeService = async (
+  currentUser,
+  candidateRef,
+  payload
+) => {
+  ensureRecruitmentAccess(currentUser);
+
+  const companyId = getCompanyId(currentUser);
+
+  const candidate = await resolveCandidate(companyId, candidateRef);
+
+  if (candidate.employeeId) {
+    throw new ApiError(409, "Candidate already converted to employee.");
+  }
+
+  if (candidate.status !== CANDIDATE_STATUS.OFFER_ACCEPTED) {
+    throw new ApiError(400, "Only offer accepted candidates can be converted.");
+  }
+
+  const offer = await findOfferByCandidate(companyId, candidate._id);
+
+  if (!offer || offer.status !== OFFER_STATUS.ACCEPTED) {
+    throw new ApiError(400, "Accepted offer is required before conversion.");
+  }
+
+  const job = await resolveJobOpening(companyId, candidate.appliedJobId);
+
+  const normalizedPayload = await normalizeConversionRefs(companyId, payload);
+
+  const email =
+    candidate.email ||
+    `${candidate.candidateCode.toLowerCase()}@noemail.local`;
+
+  const existingUser = await User.findOne({ email: email.toLowerCase() });
+
+  if (existingUser) {
+    throw new ApiError(409, "User email already exists.");
+  }
+
+  const employeeCode = await generateEmployeeCode(companyId);
+  const tempPassword = generateTempPassword();
+  const passwordHash = await bcrypt.hash(tempPassword, env.BCRYPT_ROUNDS);
+
+  const user = await User.create({
+    companyId,
+    isPlatformUser: false,
+    name: candidate.fullName || `${candidate.firstName} ${candidate.lastName}`,
+    email,
+    mobile: candidate.mobile,
+    passwordHash,
+    role: ROLES.EMPLOYEE,
+    permissions: ROLE_PERMISSIONS[ROLES.EMPLOYEE] || [],
+    status: USER_STATUS.ACTIVE,
+
+    // This employee is created by HR after accepted offer.
+    // Welcome email includes temp password, so do not block login by verification.
+    isEmailVerified: true,
+
+    forcePasswordChange: true,
+    createdBy: currentUser._id,
+  });
+
+  let employee;
+
+  try {
+    employee = await createEmployeeRecord({
+      companyId,
+      userId: user._id,
+      employeeCode,
+
+      firstName: candidate.firstName,
+      middleName: candidate.middleName || "",
+      lastName: candidate.lastName,
+      employeePhoto: candidate.photo || "",
+
+      gender: candidate.gender,
+      dateOfBirth: candidate.dateOfBirth || null,
+
+      officialEmail: candidate.email || "",
+      personalEmail: candidate.email || "",
+      mobile: candidate.mobile,
+      alternateMobile: candidate.alternateMobile || "",
+
+      currentAddress: candidate.currentAddress || {},
+      permanentAddress: candidate.permanentAddress || {},
+
+      branchId: normalizedPayload.branchId || job.branchId || null,
+      departmentId: normalizedPayload.departmentId || job.departmentId || null,
+      designationId: normalizedPayload.designationId || job.designationId || null,
+      reportingManagerId:
+        normalizedPayload.reportingManagerId || job.hiringManagerId || null,
+
+      employmentType: job.employmentType || EMPLOYMENT_TYPE.PERMANENT,
+      workMode: normalizedPayload.workMode || job.workMode || "office",
+      workLocation: normalizedPayload.workLocation || job.location || "",
+
+      shiftId: normalizedPayload.shiftId || null,
+
+      joiningDate: offer.joiningDate,
+
+      noticePeriodDays: offer.noticePeriodDays || 30,
+
+      employeeStatus: EMPLOYEE_STATUS.ACTIVE,
+
+      salaryStructureId: normalizedPayload.salaryStructureId || null,
+      attendancePolicyId: normalizedPayload.attendancePolicyId || null,
+      leavePolicyId: normalizedPayload.leavePolicyId || null,
+
+      notes: `Converted from candidate ${candidate.candidateCode}`,
+
+      createdBy: currentUser._id,
+    });
+  } catch (error) {
+    await User.findByIdAndDelete(user._id);
+    throw error;
+  }
+
+  user.employee = employee._id;
+  await user.save();
+
+  await updateCandidateById(candidate._id, {
+    status: CANDIDATE_STATUS.JOINED,
+    employeeId: employee._id,
+    joinedOn: new Date(),
+    updatedBy: currentUser._id,
+  });
+
+  if (
+    payload.sendWelcomeEmail !== false &&
+    candidate.email &&
+    !email.endsWith("@noemail.local")
+  ) {
+    try {
+      await sendWelcomeEmployeeEmail({
+        to: user.email,
+        name: user.name,
+        employeeCode: employee.employeeCode,
+        temporaryPassword: tempPassword,
+        loginUrl: `${env.CLIENT_ORIGIN}/login`,
+      });
+    } catch (emailError) {
+      console.error(
+        "[convertCandidateToEmployee] Welcome email failed:",
+        emailError.message
+      );
+    }
+  }
+
+  return {
+    employee,
+    user: user.toSafeObject(),
+    temporaryPassword: tempPassword,
+  };
+};
+
+/* ================= DASHBOARD ================= */
 
 export const getRecruitmentDashboardService = async (currentUser) => {
   const companyId = getCompanyId(currentUser);
@@ -559,355 +1682,3 @@ export const getRecruitmentDashboardService = async (currentUser) => {
     funnel,
   };
 };
-
-const generateOfferNumber = async (companyId) => {
-    const companyCode = await getCompanyCode(companyId);
-    const lastOffer = await findLastOfferByCompany(companyId);
-  
-    if (!lastOffer?.offerNumber) {
-      return `${companyCode}-OFFER-000001`;
-    }
-  
-    const lastNumber = Number(lastOffer.offerNumber.split("-").pop()) || 0;
-  
-    return `${companyCode}-OFFER-${String(lastNumber + 1).padStart(6, "0")}`;
-  };
-  
-  const generateTempPassword = () => {
-    return `Temp@${crypto.randomBytes(4).toString("hex")}`;
-  };
-  
-  /* ---------------- Offer Letter ---------------- */
-  
-  export const createOfferService = async (currentUser, payload) => {
-    ensureRecruitmentAccess(currentUser);
-  
-    const companyId = getCompanyId(currentUser);
-  
-    const candidate = await findCandidateById(payload.candidateId);
-    ensureSameCompanyRecord(companyId, candidate, "Candidate not found.");
-  
-    const job = await findJobOpeningById(payload.jobOpeningId);
-    ensureSameCompanyRecord(companyId, job, "Job opening not found.");
-  
-    if (candidate.appliedJobId.toString() !== job._id.toString()) {
-      throw new ApiError(400, "Candidate does not belong to this job opening.");
-    }
-  
-    const existingOffer = await findOfferByCandidate(companyId, candidate._id);
-  
-    if (existingOffer) {
-      throw new ApiError(409, "Offer already exists for this candidate.");
-    }
-  
-    const offerNumber = await generateOfferNumber(companyId);
-  
-    const offerExists = await findOfferByNumber(companyId, offerNumber);
-  
-    if (offerExists) {
-      throw new ApiError(409, "Offer number already exists. Please retry.");
-    }
-  
-    const offer = await createOfferRecord({
-      ...payload,
-      companyId,
-      offerNumber,
-      status: OFFER_STATUS.DRAFT,
-      createdBy: currentUser._id,
-    });
-  
-    await updateCandidateById(candidate._id, {
-      status: CANDIDATE_STATUS.OFFER_SENT,
-      updatedBy: currentUser._id,
-    });
-  
-    return offer;
-  };
-  
-  export const getOffersService = async (currentUser, query = {}) => {
-    const companyId = getCompanyId(currentUser);
-  
-    const page = Number(query.page || 1);
-    const limit = Math.min(Number(query.limit || 10), 100);
-  
-    const filter = { companyId };
-  
-    if (query.status) filter.status = query.status;
-    if (query.candidateId) filter.candidateId = query.candidateId;
-    if (query.jobOpeningId) filter.jobOpeningId = query.jobOpeningId;
-  
-    return listOffers({
-      filter,
-      page,
-      limit,
-      sort: { createdAt: -1 },
-    });
-  };
-  
-  export const getOfferByIdService = async (currentUser, id) => {
-    const companyId = getCompanyId(currentUser);
-  
-    const offer = await findOfferById(id);
-  
-    ensureSameCompanyRecord(companyId, offer, "Offer not found.");
-  
-    return offer;
-  };
-  
-  export const updateOfferService = async (currentUser, id, payload) => {
-    ensureRecruitmentAccess(currentUser);
-  
-    const companyId = getCompanyId(currentUser);
-  
-    const offer = await findOfferById(id);
-  
-    ensureSameCompanyRecord(companyId, offer, "Offer not found.");
-  
-    if (offer.status === OFFER_STATUS.ACCEPTED) {
-      throw new ApiError(400, "Accepted offer cannot be edited.");
-    }
-  
-    return updateOfferById(id, {
-      ...payload,
-      updatedBy: currentUser._id,
-    });
-  };
-  
-  export const updateOfferStatusService = async (currentUser, id, payload) => {
-    ensureRecruitmentAccess(currentUser);
-  
-    const companyId = getCompanyId(currentUser);
-  
-    const offer = await findOfferById(id);
-  
-    ensureSameCompanyRecord(companyId, offer, "Offer not found.");
-  
-    const updatePayload = {
-      status: payload.status,
-      remarks: payload.remarks || offer.remarks,
-      updatedBy: currentUser._id,
-    };
-  
-    if (payload.status === OFFER_STATUS.ACCEPTED) {
-      updatePayload.acceptedAt = new Date();
-    }
-  
-    if (payload.status === OFFER_STATUS.REJECTED) {
-      updatePayload.rejectedAt = new Date();
-    }
-  
-    const updated = await updateOfferById(id, updatePayload);
-  
-    if (payload.status === OFFER_STATUS.ACCEPTED) {
-      await updateCandidateById(offer.candidateId, {
-        status: CANDIDATE_STATUS.OFFER_ACCEPTED,
-        updatedBy: currentUser._id,
-      });
-    }
-  
-    return updated;
-  };
-  
-  export const acceptOfferService = async (currentUser, candidateId, payload) => {
-    ensureRecruitmentAccess(currentUser);
-  
-    const companyId = getCompanyId(currentUser);
-  
-    const candidate = await findCandidateById(candidateId);
-  
-    ensureSameCompanyRecord(companyId, candidate, "Candidate not found.");
-  
-    const offer = await findOfferByCandidate(companyId, candidateId);
-  
-    if (!offer) {
-      throw new ApiError(404, "Offer not found for this candidate.");
-    }
-  
-    const updated = await updateOfferById(offer._id, {
-      status: OFFER_STATUS.ACCEPTED,
-      joiningDate: payload.joiningDate,
-      acceptedAt: new Date(),
-      updatedBy: currentUser._id,
-    });
-  
-    await updateCandidateById(candidateId, {
-      status: CANDIDATE_STATUS.OFFER_ACCEPTED,
-      updatedBy: currentUser._id,
-    });
-  
-    return updated;
-  };
-  
-  export const deleteOfferService = async (currentUser, id) => {
-    ensureRecruitmentAccess(currentUser);
-  
-    const companyId = getCompanyId(currentUser);
-  
-    const offer = await findOfferById(id);
-  
-    ensureSameCompanyRecord(companyId, offer, "Offer not found.");
-  
-    if (offer.status === OFFER_STATUS.ACCEPTED) {
-      throw new ApiError(400, "Accepted offer cannot be deleted.");
-    }
-  
-    await deleteOfferById(id);
-  
-    return true;
-  };
-  
-  /* ---------------- Candidate Conversion ---------------- */
-  
-  export const getCandidateConversionPreviewService = async (
-    currentUser,
-    candidateId
-  ) => {
-    const companyId = getCompanyId(currentUser);
-  
-    const candidate = await findCandidateById(candidateId);
-    ensureSameCompanyRecord(companyId, candidate, "Candidate not found.");
-  
-    const offer = await findOfferByCandidate(companyId, candidateId);
-  
-    if (!offer) {
-      throw new ApiError(404, "Offer not found.");
-    }
-  
-    return {
-      candidate,
-      offer,
-      canConvert: candidate.status === CANDIDATE_STATUS.OFFER_ACCEPTED,
-    };
-  };
-  
-  export const convertCandidateToEmployeeService = async (
-    currentUser,
-    candidateId,
-    payload
-  ) => {
-    ensureRecruitmentAccess(currentUser);
-  
-    const companyId = getCompanyId(currentUser);
-  
-    const candidate = await findCandidateById(candidateId);
-    ensureSameCompanyRecord(companyId, candidate, "Candidate not found.");
-  
-    if (candidate.employeeId) {
-      throw new ApiError(409, "Candidate already converted to employee.");
-    }
-  
-    if (candidate.status !== CANDIDATE_STATUS.OFFER_ACCEPTED) {
-      throw new ApiError(400, "Only offer accepted candidates can be converted.");
-    }
-  
-    const offer = await findOfferByCandidate(companyId, candidateId);
-  
-    if (!offer || offer.status !== OFFER_STATUS.ACCEPTED) {
-      throw new ApiError(400, "Accepted offer is required before conversion.");
-    }
-  
-    const job = await findJobOpeningById(candidate.appliedJobId);
-    ensureSameCompanyRecord(companyId, job, "Job opening not found.");
-  
-    const email = candidate.email || `${candidate.candidateCode.toLowerCase()}@noemail.local`;
-
-    if (payload.sendWelcomeEmail !== false) {
-      try {
-        await sendWelcomeEmployeeEmail({
-          to: user.email,
-          name: user.name,
-          employeeCode: employee.employeeCode,
-          temporaryPassword: tempPassword,
-          loginUrl: `${env.CLIENT_ORIGIN}/login`,
-        });
-      } catch (emailError) {
-        console.error("[convertCandidateToEmployee] Welcome email failed:", emailError.message);
-      }
-    }
-  
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
-  
-    if (existingUser) {
-      throw new ApiError(409, "User email already exists.");
-    }
-  
-    const tempPassword = generateTempPassword();
-    const passwordHash = await bcrypt.hash(tempPassword, env.BCRYPT_ROUNDS);
-  
-    const user = await User.create({
-      companyId,
-      isPlatformUser: false,
-      name: candidate.fullName,
-      email,
-      mobile: candidate.mobile,
-      passwordHash,
-      role: ROLES.EMPLOYEE,
-      permissions: ROLE_PERMISSIONS[ROLES.EMPLOYEE] || [],
-      status: USER_STATUS.ACTIVE,
-      isEmailVerified: false,
-      forcePasswordChange: true,
-      createdBy: currentUser._id,
-    });
-  
-    const employee = await createEmployeeRecord({
-      companyId,
-      userId: user._id,
-  
-      firstName: candidate.firstName,
-      middleName: candidate.middleName || "",
-      lastName: candidate.lastName,
-      employeePhoto: candidate.photo || "",
-  
-      gender: candidate.gender,
-      dateOfBirth: candidate.dateOfBirth || null,
-  
-      officialEmail: candidate.email || "",
-      personalEmail: candidate.email || "",
-      mobile: candidate.mobile,
-      alternateMobile: candidate.alternateMobile || "",
-  
-      currentAddress: candidate.currentAddress || {},
-      permanentAddress: candidate.permanentAddress || {},
-  
-      branchId: payload.branchId || job.branchId || null,
-      departmentId: payload.departmentId || job.departmentId || null,
-      designationId: payload.designationId || job.designationId || null,
-      reportingManagerId: payload.reportingManagerId || job.hiringManagerId || null,
-  
-      employmentType: job.employmentType || EMPLOYMENT_TYPE.PERMANENT,
-      workMode: payload.workMode || job.workMode || "office",
-      workLocation: payload.workLocation || job.location || "",
-  
-      shiftId: payload.shiftId || null,
-  
-      joiningDate: offer.joiningDate,
-  
-      noticePeriodDays: offer.noticePeriodDays || 30,
-  
-      employeeStatus: EMPLOYEE_STATUS.ACTIVE,
-  
-      salaryStructureId: payload.salaryStructureId || null,
-      attendancePolicyId: payload.attendancePolicyId || null,
-      leavePolicyId: payload.leavePolicyId || null,
-  
-      notes: `Converted from candidate ${candidate.candidateCode}`,
-  
-      createdBy: currentUser._id,
-    });
-  
-    user.employee = employee._id;
-    await user.save();
-  
-    await updateCandidateById(candidate._id, {
-      status: CANDIDATE_STATUS.JOINED,
-      employeeId: employee._id,
-      joinedOn: new Date(),
-      updatedBy: currentUser._id,
-    });
-  
-    return {
-      employee,
-      user: user.toSafeObject(),
-      temporaryPassword: tempPassword,
-    };
-  };

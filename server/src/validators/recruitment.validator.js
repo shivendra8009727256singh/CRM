@@ -18,6 +18,7 @@ import {
 } from "../models/Interview.js";
 
 const objectId = Joi.string().hex().length(24);
+const code = Joi.string().trim().uppercase().min(1).max(50);
 
 const salaryRangeSchema = Joi.object({
   min: Joi.number().min(0).default(0),
@@ -41,13 +42,21 @@ const addressSchema = Joi.object({
 
 /* ---------------- Job Opening ---------------- */
 
-export const createJobOpeningSchema = Joi.object({
-  branchId: objectId.allow(null),
-  departmentId: objectId.allow(null),
-  designationId: objectId.allow(null),
-  hiringManagerId: objectId.allow(null),
+const jobOpeningBaseSchema = {
+  branchId: objectId.allow("", null),
+  branchCode: code.allow("", null),
 
-  jobTitle: Joi.string().trim().min(2).max(150).required(),
+  departmentId: objectId.allow("", null),
+  departmentCode: code.allow("", null),
+
+  designationId: objectId.allow("", null),
+  designationCode: code.allow("", null),
+
+  hiringManagerId: objectId.allow("", null),
+  hiringManagerCode: code.allow("", null),
+  hiringManagerEmployeeCode: code.allow("", null),
+
+  jobTitle: Joi.string().trim().min(2).max(150),
 
   employmentType: Joi.string()
     .valid(
@@ -102,12 +111,14 @@ export const createJobOpeningSchema = Joi.object({
   sourceBudget: Joi.number().min(0).default(0),
 
   notes: Joi.string().trim().allow("", null),
+};
+
+export const createJobOpeningSchema = Joi.object({
+  ...jobOpeningBaseSchema,
+  jobTitle: jobOpeningBaseSchema.jobTitle.required(),
 });
 
-export const updateJobOpeningSchema = createJobOpeningSchema.fork(
-  ["jobTitle"],
-  (schema) => schema.optional()
-);
+export const updateJobOpeningSchema = Joi.object(jobOpeningBaseSchema);
 
 export const updateJobStatusSchema = Joi.object({
   status: Joi.string()
@@ -117,12 +128,14 @@ export const updateJobStatusSchema = Joi.object({
 
 /* ---------------- Candidate ---------------- */
 
-export const createCandidateSchema = Joi.object({
-  appliedJobId: objectId.required(),
+const candidateBaseSchema = {
+  appliedJobId: objectId.allow("", null),
+  jobOpeningId: objectId.allow("", null),
+  jobCode: code.allow("", null),
 
-  firstName: Joi.string().trim().min(2).required(),
+  firstName: Joi.string().trim().min(2),
   middleName: Joi.string().trim().allow("", null),
-  lastName: Joi.string().trim().min(2).required(),
+  lastName: Joi.string().trim().min(2),
 
   photo: Joi.string().trim().allow("", null),
 
@@ -134,7 +147,7 @@ export const createCandidateSchema = Joi.object({
 
   email: Joi.string().email().lowercase().trim().allow("", null),
 
-  mobile: Joi.string().trim().required(),
+  mobile: Joi.string().trim(),
 
   alternateMobile: Joi.string().trim().allow("", null),
 
@@ -203,9 +216,12 @@ export const createCandidateSchema = Joi.object({
     .valid(...Object.values(CANDIDATE_SOURCE))
     .default(CANDIDATE_SOURCE.CAREER_PORTAL),
 
-  referredBy: objectId.allow(null),
+  referredBy: objectId.allow("", null),
+  referredByEmployeeCode: code.allow("", null),
 
-  recruiterId: objectId.allow(null),
+  recruiterId: objectId.allow("", null),
+  recruiterCode: code.allow("", null),
+  recruiterEmployeeCode: code.allow("", null),
 
   status: Joi.string()
     .valid(...Object.values(CANDIDATE_STATUS))
@@ -214,12 +230,16 @@ export const createCandidateSchema = Joi.object({
   overallRating: Joi.number().min(0).max(5).default(0),
 
   remarks: Joi.string().trim().allow("", null),
-});
+};
 
-export const updateCandidateSchema = createCandidateSchema.fork(
-  ["appliedJobId", "firstName", "lastName", "mobile"],
-  (schema) => schema.optional()
-);
+export const createCandidateSchema = Joi.object({
+  ...candidateBaseSchema,
+  firstName: candidateBaseSchema.firstName.required(),
+  lastName: candidateBaseSchema.lastName.required(),
+  mobile: candidateBaseSchema.mobile.required(),
+}).or("appliedJobId", "jobOpeningId", "jobCode");
+
+export const updateCandidateSchema = Joi.object(candidateBaseSchema);
 
 export const updateCandidateStatusSchema = Joi.object({
   status: Joi.string()
@@ -232,7 +252,8 @@ export const updateCandidateStatusSchema = Joi.object({
 /* ---------------- Interview ---------------- */
 
 const panelMemberSchema = Joi.object({
-  employeeId: objectId.allow(null),
+  employeeId: objectId.allow("", null),
+  employeeCode: code.allow("", null),
 
   name: Joi.string().trim().allow("", null),
 
@@ -242,7 +263,9 @@ const panelMemberSchema = Joi.object({
 });
 
 const feedbackSchema = Joi.object({
-  interviewerId: objectId.allow(null),
+  interviewerId: objectId.allow("", null),
+  interviewerEmployeeCode: code.allow("", null),
+  employeeCode: code.allow("", null),
 
   technicalRating: Joi.number().min(0).max(5).default(0),
 
@@ -265,10 +288,13 @@ const feedbackSchema = Joi.object({
   submittedAt: Joi.date().allow(null),
 });
 
-export const createInterviewSchema = Joi.object({
-  candidateId: objectId.required(),
+const interviewBaseSchema = {
+  candidateId: objectId.allow("", null),
+  candidateCode: code.allow("", null),
 
-  jobOpeningId: objectId.required(),
+  jobOpeningId: objectId.allow("", null),
+  appliedJobId: objectId.allow("", null),
+  jobCode: code.allow("", null),
 
   roundName: Joi.string().trim().min(2).default("Round 1"),
 
@@ -278,9 +304,9 @@ export const createInterviewSchema = Joi.object({
     .valid(...Object.values(INTERVIEW_MODE))
     .default(INTERVIEW_MODE.ONLINE),
 
-  scheduledDate: Joi.date().required(),
+  scheduledDate: Joi.date(),
 
-  startTime: Joi.string().trim().required(),
+  startTime: Joi.string().trim(),
 
   endTime: Joi.string().trim().allow("", null),
 
@@ -305,12 +331,17 @@ export const createInterviewSchema = Joi.object({
     .default(INTERVIEW_RESULT.PENDING),
 
   finalRemarks: Joi.string().trim().allow("", null),
-});
+};
 
-export const updateInterviewSchema = createInterviewSchema.fork(
-  ["candidateId", "jobOpeningId", "scheduledDate", "startTime"],
-  (schema) => schema.optional()
-);
+export const createInterviewSchema = Joi.object({
+  ...interviewBaseSchema,
+  scheduledDate: interviewBaseSchema.scheduledDate.required(),
+  startTime: interviewBaseSchema.startTime.required(),
+})
+  .or("candidateId", "candidateCode")
+  .or("jobOpeningId", "appliedJobId", "jobCode");
+
+export const updateInterviewSchema = Joi.object(interviewBaseSchema);
 
 export const updateInterviewResultSchema = Joi.object({
   status: Joi.string()
@@ -329,116 +360,113 @@ export const updateInterviewResultSchema = Joi.object({
 
   cancelledReason: Joi.string().trim().allow("", null),
 });
+
+/* ---------------- Offer Letter ---------------- */
+
 const offerSalarySchema = Joi.object({
-    basic: Joi.number().min(0).default(0),
-  
-    hra: Joi.number().min(0).default(0),
-  
-    allowances: Joi.number().min(0).default(0),
-  
-    bonus: Joi.number().min(0).default(0),
-  
-    grossSalary: Joi.number().min(0).default(0),
-  
-    deductions: Joi.number().min(0).default(0),
-  
-    netSalary: Joi.number().min(0).default(0),
-  
-    ctc: Joi.number().min(0).default(0),
-  
-    currency: Joi.string()
-      .trim()
-      .uppercase()
-      .default("INR"),
-  });
+  basic: Joi.number().min(0).default(0),
 
+  hra: Joi.number().min(0).default(0),
 
-  export const createOfferSchema = Joi.object({
-    candidateId: objectId.required(),
-  
-    jobOpeningId: objectId.required(),
-  
-    joiningDate: Joi.date().required(),
-  
-    offerDate: Joi.date().default(() => new Date()),
-  
-    validTill: Joi.date().allow(null),
-  
-    probationMonths: Joi.number()
-      .integer()
-      .min(0)
-      .default(6),
-  
-    noticePeriodDays: Joi.number()
-      .integer()
-      .min(0)
-      .default(30),
-  
-    salary: offerSalarySchema.required(),
-  
-    offerPdfUrl: Joi.string()
-      .trim()
-      .allow("", null),
-  
-    terms: Joi.string()
-      .trim()
-      .allow("", null),
-  
-    remarks: Joi.string()
-      .trim()
-      .allow("", null),
-  });
+  allowances: Joi.number().min(0).default(0),
 
+  bonus: Joi.number().min(0).default(0),
 
-  export const updateOfferStatusSchema = Joi.object({
-    status: Joi.string()
-      .valid(...Object.values(OFFER_STATUS))
-      .required(),
-  
-    remarks: Joi.string()
-      .trim()
-      .allow("", null),
-  });
+  grossSalary: Joi.number().min(0).default(0),
 
-  export const acceptOfferSchema = Joi.object({
-    joiningDate: Joi.date().required(),
-  });
+  deductions: Joi.number().min(0).default(0),
 
+  netSalary: Joi.number().min(0).default(0),
 
-  export const convertCandidateSchema = Joi.object({
-    reportingManagerId: objectId.allow(null),
-  
-    branchId: objectId.allow(null),
-  
-    departmentId: objectId.allow(null),
-  
-    designationId: objectId.allow(null),
-  
-    workLocation: Joi.string()
-      .trim()
-      .allow("", null),
-  
-    workMode: Joi.string()
-      .valid(
-        "office",
-        "remote",
-        "hybrid",
-        "field"
-      )
-      .default("office"),
-  
-    shiftId: objectId.allow(null),
-  
-    leavePolicyId: objectId.allow(null),
-  
-    attendancePolicyId: objectId.allow(null),
-  
-    salaryStructureId: objectId.allow(null),
-  
-    sendWelcomeEmail: Joi.boolean().default(true),
+  ctc: Joi.number().min(0).default(0),
+
+  currency: Joi.string().trim().uppercase().default("INR"),
 });
 
-export const updateOfferSchema = createOfferSchema.fork(
-  ["candidateId", "jobOpeningId", "joiningDate", "offerDate", "validTill"],
-  (field) => field.optional()
-);
+const offerBaseSchema = {
+  candidateId: objectId.allow("", null),
+  candidateCode: code.allow("", null),
+
+  jobOpeningId: objectId.allow("", null),
+  appliedJobId: objectId.allow("", null),
+  jobCode: code.allow("", null),
+
+  joiningDate: Joi.date(),
+
+  offerDate: Joi.date().default(() => new Date()),
+
+  validTill: Joi.date().allow(null),
+
+  probationMonths: Joi.number().integer().min(0).default(6),
+
+  noticePeriodDays: Joi.number().integer().min(0).default(30),
+
+  salary: offerSalarySchema,
+
+  offerPdfUrl: Joi.string().trim().allow("", null),
+
+  terms: Joi.string().trim().allow("", null),
+
+  remarks: Joi.string().trim().allow("", null),
+};
+
+export const createOfferSchema = Joi.object({
+  ...offerBaseSchema,
+  joiningDate: offerBaseSchema.joiningDate.required(),
+  salary: offerBaseSchema.salary.required(),
+})
+  .or("candidateId", "candidateCode")
+  .or("jobOpeningId", "appliedJobId", "jobCode");
+
+export const updateOfferSchema = Joi.object(offerBaseSchema);
+
+export const updateOfferStatusSchema = Joi.object({
+  status: Joi.string()
+    .valid(...Object.values(OFFER_STATUS))
+    .required(),
+
+  remarks: Joi.string().trim().allow("", null),
+});
+
+export const acceptOfferSchema = Joi.object({
+  joiningDate: Joi.date().required(),
+});
+
+/* ---------------- Candidate Conversion ---------------- */
+
+export const convertCandidateSchema = Joi.object({
+  reportingManagerId: objectId.allow("", null),
+  reportingManagerCode: code.allow("", null),
+  reportingManagerEmployeeCode: code.allow("", null),
+
+  branchId: objectId.allow("", null),
+  branchCode: code.allow("", null),
+
+  departmentId: objectId.allow("", null),
+  departmentCode: code.allow("", null),
+
+  designationId: objectId.allow("", null),
+  designationCode: code.allow("", null),
+
+  workLocation: Joi.string().trim().allow("", null),
+
+  workMode: Joi.string()
+    .valid("office", "remote", "hybrid", "field")
+    .default("office"),
+
+  shiftId: objectId.allow("", null),
+  shiftCode: code.allow("", null),
+
+  leavePolicyId: objectId.allow("", null),
+  leavePolicyCode: code.allow("", null),
+  leavePolicyCodeValue: code.allow("", null),
+
+  attendancePolicyId: objectId.allow("", null),
+  attendancePolicyCode: code.allow("", null),
+
+  salaryStructureId: objectId.allow("", null),
+  salaryStructureCode: code.allow("", null),
+  structureCode: code.allow("", null),
+
+  sendWelcomeEmail: Joi.boolean().default(true),
+});
