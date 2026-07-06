@@ -1,5 +1,10 @@
 import { Holiday } from "../models/Holiday.js";
 
+const normalizeText = (value) => {
+  if (!value) return value;
+  return String(value).trim();
+};
+
 export const createHolidayRecord = async (payload) => {
   return Holiday.create(payload);
 };
@@ -18,7 +23,7 @@ export const findHolidayByDateName = async ({
     companyId,
     branchId: branchId || null,
     date,
-    holidayName,
+    holidayName: normalizeText(holidayName),
   });
 };
 

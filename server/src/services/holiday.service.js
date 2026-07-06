@@ -1,6 +1,10 @@
 import { ApiError } from "../utils/apiError.js";
 import { ROLES } from "../constants/roles.js";
-import { findBranchById } from "../repositories/employee.repository.js";
+
+import {
+  findBranchById,
+  findBranchByCode,
+} from "../repositories/employee.repository.js";
 
 import {
   createHolidayRecord,
@@ -12,6 +16,15 @@ import {
   getUpcomingHolidays,
   countHolidays,
 } from "../repositories/holiday.repository.js";
+
+const hasValue = (value) => {
+  return value !== undefined && value !== null && value !== "";
+};
+
+const normalizeCode = (value) => {
+  if (!hasValue(value)) return null;
+  return String(value).trim().toUpperCase();
+};
 
 const getCompanyId = (currentUser) => {
   if (!currentUser.companyId) {
@@ -39,10 +52,23 @@ const normalizeDate = (date) => {
   return d;
 };
 
-const validateBranch = async (companyId, branchId) => {
-  if (!branchId) return null;
+const resolveBranch = async (companyId, payload = {}) => {
+  const branchId = payload.branchId;
+  const branchCode = normalizeCode(payload.branchCode);
 
-  const branch = await findBranchById(branchId);
+  if (!hasValue(branchId) && !branchCode) {
+    return null;
+  }
+
+  let branch = null;
+
+  if (hasValue(branchId)) {
+    branch = await findBranchById(branchId);
+  }
+
+  if (!branch && branchCode) {
+    branch = await findBranchByCode(companyId, branchCode);
+  }
 
   if (!branch || branch.companyId.toString() !== companyId.toString()) {
     throw new ApiError(400, "Invalid branch for this company.");
@@ -51,19 +77,41 @@ const validateBranch = async (companyId, branchId) => {
   return branch;
 };
 
+const normalizeHolidayPayload = async (companyId, payload = {}, partial = false) => {
+  const normalized = { ...payload };
+
+  if (!partial || "branchId" in payload || "branchCode" in payload) {
+    const branch = await resolveBranch(companyId, payload);
+    normalized.branchId = branch?._id || null;
+  }
+
+  if (payload.date) {
+    normalized.date = normalizeDate(payload.date);
+  }
+
+  delete normalized.branchCode;
+
+  return normalized;
+};
+
 export const createHolidayService = async (currentUser, payload) => {
   ensureHolidayAccess(currentUser);
 
   const companyId = getCompanyId(currentUser);
-  await validateBranch(companyId, payload.branchId);
 
-  const date = normalizeDate(payload.date);
+  const normalizedPayload = await normalizeHolidayPayload(
+    companyId,
+    payload,
+    false
+  );
+
+  const date = normalizeDate(normalizedPayload.date);
 
   const exists = await findHolidayByDateName({
     companyId,
-    branchId: payload.branchId || null,
+    branchId: normalizedPayload.branchId || null,
     date,
-    holidayName: payload.holidayName,
+    holidayName: normalizedPayload.holidayName,
   });
 
   if (exists) {
@@ -71,7 +119,7 @@ export const createHolidayService = async (currentUser, payload) => {
   }
 
   return createHolidayRecord({
-    ...payload,
+    ...normalizedPayload,
     companyId,
     date,
     createdBy: currentUser._id,
@@ -86,16 +134,36 @@ export const getHolidaysService = async (currentUser, query = {}) => {
 
   const filter = { companyId };
 
-  if (query.branchId) filter.branchId = query.branchId;
-  if (query.type) filter.type = query.type;
+  if (query.branchId) {
+    filter.branchId = query.branchId;
+  }
+
+  if (query.branchCode) {
+    const branch = await resolveBranch(companyId, {
+      branchCode: query.branchCode,
+    });
+
+    filter.branchId = branch._id;
+  }
+
+  if (query.type) {
+    filter.type = query.type;
+  }
+
   if (query.isActive !== undefined) {
     filter.isActive = query.isActive === "true";
   }
 
   if (query.from || query.to) {
     filter.date = {};
-    if (query.from) filter.date.$gte = normalizeDate(query.from);
-    if (query.to) filter.date.$lte = normalizeDate(query.to);
+
+    if (query.from) {
+      filter.date.$gte = normalizeDate(query.from);
+    }
+
+    if (query.to) {
+      filter.date.$lte = normalizeDate(query.to);
+    }
   }
 
   if (query.search) {
@@ -128,20 +196,16 @@ export const updateHolidayService = async (currentUser, id, payload) => {
 
   ensureSameCompany(companyId, holiday);
 
-  if (payload.branchId) {
-    await validateBranch(companyId, payload.branchId);
-  }
+  const normalizedPayload = await normalizeHolidayPayload(
+    companyId,
+    payload,
+    true
+  );
 
-  const updatePayload = {
-    ...payload,
+  return updateHolidayById(id, {
+    ...normalizedPayload,
     updatedBy: currentUser._id,
-  };
-
-  if (payload.date) {
-    updatePayload.date = normalizeDate(payload.date);
-  }
-
-  return updateHolidayById(id, updatePayload);
+  });
 };
 
 export const deleteHolidayService = async (currentUser, id) => {

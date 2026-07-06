@@ -1,9 +1,11 @@
 import Joi from "joi";
 
 const objectId = Joi.string().hex().length(24);
+const code = Joi.string().trim().uppercase().min(1).max(50);
 
 export const createHolidaySchema = Joi.object({
-  branchId: objectId.allow(null),
+  branchId: objectId.allow("", null),
+  branchCode: code.allow("", null),
 
   holidayName: Joi.string().trim().min(2).max(120).required(),
 
