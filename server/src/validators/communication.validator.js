@@ -6,9 +6,15 @@ import {
 } from "../models/Notification.js";
 
 const objectId = Joi.string().hex().length(24);
+const code = Joi.string().trim().uppercase().min(1).max(50);
 
 export const sendMessageSchema = Joi.object({
-  recipientUserId: objectId.required(),
+  recipientUserId: objectId.allow("", null),
+
+  recipientEmail: Joi.string().email().lowercase().trim().allow("", null),
+
+  recipientEmployeeCode: code.allow("", null),
+  employeeCode: code.allow("", null),
 
   subject: Joi.string()
     .trim()
@@ -23,10 +29,15 @@ export const sendMessageSchema = Joi.object({
   attachmentUrl: Joi.string()
     .trim()
     .allow("", null),
-});
+}).or("recipientUserId", "recipientEmail", "recipientEmployeeCode", "employeeCode");
 
 export const sendNotificationSchema = Joi.object({
-  recipientUserId: objectId.required(),
+  recipientUserId: objectId.allow("", null),
+
+  recipientEmail: Joi.string().email().lowercase().trim().allow("", null),
+
+  recipientEmployeeCode: code.allow("", null),
+  employeeCode: code.allow("", null),
 
   type: Joi.string()
     .valid(...Object.values(NOTIFICATION_TYPE))
@@ -50,12 +61,12 @@ export const sendNotificationSchema = Joi.object({
     .trim()
     .allow("", null),
 
-  entityId: objectId.allow(null),
+  entityId: objectId.allow("", null),
 
   actionUrl: Joi.string()
     .trim()
     .allow("", null),
-});
+}).or("recipientUserId", "recipientEmail", "recipientEmployeeCode", "employeeCode");
 
 export const markNotificationReadSchema = Joi.object({
   isRead: Joi.boolean().default(true),

@@ -87,24 +87,37 @@ export const updateNotificationById = async (id, payload) => {
   });
 };
 
-export const markAllNotificationsRead = async ({ companyId, recipientUserId }) => {
-  return Notification.updateMany(
-    {
-      companyId,
-      recipientUserId,
-      isRead: false,
-    },
-    {
-      isRead: true,
-      readAt: new Date(),
-    }
-  );
-};
-
-export const countUnreadNotifications = async ({ companyId, recipientUserId }) => {
-  return Notification.countDocuments({
-    companyId,
+export const markAllNotificationsRead = async ({
+  companyId,
+  recipientUserId,
+}) => {
+  const filter = {
     recipientUserId,
     isRead: false,
+  };
+
+  if (companyId) {
+    filter.companyId = companyId;
+  }
+
+  return Notification.updateMany(filter, {
+    isRead: true,
+    readAt: new Date(),
   });
+};
+
+export const countUnreadNotifications = async ({
+  companyId,
+  recipientUserId,
+}) => {
+  const filter = {
+    recipientUserId,
+    isRead: false,
+  };
+
+  if (companyId) {
+    filter.companyId = companyId;
+  }
+
+  return Notification.countDocuments(filter);
 };

@@ -4,6 +4,10 @@ import { User } from "../models/User.js";
 import { NOTIFICATION_TYPE } from "../models/Notification.js";
 
 import {
+  findEmployeeByCode,
+} from "../repositories/employee.repository.js";
+
+import {
   createMessageRecord,
   findMessageById,
   listMessages,
@@ -20,6 +24,20 @@ import {
   emitNotificationToUser,
   emitMessageToUser,
 } from "../socket/socket.js";
+
+const hasValue = (value) => {
+  return value !== undefined && value !== null && value !== "";
+};
+
+const normalizeCode = (value) => {
+  if (!hasValue(value)) return null;
+  return String(value).trim().toUpperCase();
+};
+
+const normalizeEmail = (value) => {
+  if (!hasValue(value)) return null;
+  return String(value).trim().toLowerCase();
+};
 
 const getCompanyId = (currentUser) => {
   if (!currentUser.companyId) {
@@ -41,27 +59,6 @@ const ensureCommunicationAccess = (currentUser) => {
   if (!canSendCommunication(currentUser)) {
     throw new ApiError(403, "You are not allowed to send communication.");
   }
-};
-
-const ensureRecipientBelongsToCompany = async (currentUser, recipientUserId) => {
-  const recipient = await User.findById(recipientUserId);
-
-  if (!recipient) {
-    throw new ApiError(404, "Recipient user not found.");
-  }
-
-  if (currentUser.role === ROLES.SUPER_ADMIN) {
-    return recipient;
-  }
-
-  const senderCompanyId = getCompanyId(currentUser).toString();
-  const recipientCompanyId = recipient.companyId?.toString();
-
-  if (senderCompanyId !== recipientCompanyId) {
-    throw new ApiError(403, "Recipient does not belong to your company.");
-  }
-
-  return recipient;
 };
 
 const ensureSameCompanyRecord = (
@@ -96,22 +93,79 @@ const resolveCompanyIdForCommunication = (currentUser, recipient) => {
   return getCompanyId(currentUser);
 };
 
+const resolveRecipientUser = async (currentUser, payload = {}) => {
+  let recipient = null;
+
+  if (payload.recipientUserId) {
+    recipient = await User.findById(payload.recipientUserId);
+  }
+
+  if (!recipient && payload.recipientEmail) {
+    recipient = await User.findOne({
+      email: normalizeEmail(payload.recipientEmail),
+    });
+  }
+
+  if (
+    !recipient &&
+    (payload.recipientEmployeeCode || payload.employeeCode)
+  ) {
+    if (currentUser.role === ROLES.SUPER_ADMIN && !currentUser.companyId) {
+      throw new ApiError(
+        400,
+        "Company context is required to find recipient by employee code."
+      );
+    }
+
+    const companyId = getCompanyId(currentUser);
+
+    const employee = await findEmployeeByCode(
+      companyId,
+      normalizeCode(payload.recipientEmployeeCode || payload.employeeCode)
+    );
+
+    if (!employee) {
+      throw new ApiError(404, "Recipient employee not found.");
+    }
+
+    if (!employee.userId) {
+      throw new ApiError(400, "Recipient employee has no user account.");
+    }
+
+    recipient = await User.findById(employee.userId);
+  }
+
+  if (!recipient) {
+    throw new ApiError(404, "Recipient user not found.");
+  }
+
+  if (currentUser.role === ROLES.SUPER_ADMIN) {
+    return recipient;
+  }
+
+  const senderCompanyId = getCompanyId(currentUser).toString();
+  const recipientCompanyId = recipient.companyId?.toString();
+
+  if (senderCompanyId !== recipientCompanyId) {
+    throw new ApiError(403, "Recipient does not belong to your company.");
+  }
+
+  return recipient;
+};
+
 /* ================= MESSAGES ================= */
 
 export const sendMessageService = async (currentUser, payload) => {
   ensureCommunicationAccess(currentUser);
 
-  const recipient = await ensureRecipientBelongsToCompany(
-    currentUser,
-    payload.recipientUserId
-  );
+  const recipient = await resolveRecipientUser(currentUser, payload);
 
   const companyId = resolveCompanyIdForCommunication(currentUser, recipient);
 
   const message = await createMessageRecord({
     companyId,
     senderUserId: currentUser._id,
-    recipientUserId: payload.recipientUserId,
+    recipientUserId: recipient._id,
     subject: payload.subject || "",
     body: payload.body,
     attachmentUrl: payload.attachmentUrl || "",
@@ -120,7 +174,7 @@ export const sendMessageService = async (currentUser, payload) => {
 
   const notification = await createNotificationRecord({
     companyId,
-    recipientUserId: payload.recipientUserId,
+    recipientUserId: recipient._id,
     senderUserId: currentUser._id,
     type: NOTIFICATION_TYPE.MESSAGE,
     title: payload.subject || "New Message",
@@ -131,8 +185,8 @@ export const sendMessageService = async (currentUser, payload) => {
     createdBy: currentUser._id,
   });
 
-  emitMessageToUser(payload.recipientUserId.toString(), message);
-  emitNotificationToUser(payload.recipientUserId.toString(), notification);
+  emitMessageToUser(recipient._id.toString(), message);
+  emitNotificationToUser(recipient._id.toString(), notification);
 
   return {
     message,
@@ -207,16 +261,13 @@ export const markMessageReadService = async (currentUser, id) => {
 export const sendNotificationService = async (currentUser, payload) => {
   ensureCommunicationAccess(currentUser);
 
-  const recipient = await ensureRecipientBelongsToCompany(
-    currentUser,
-    payload.recipientUserId
-  );
+  const recipient = await resolveRecipientUser(currentUser, payload);
 
   const companyId = resolveCompanyIdForCommunication(currentUser, recipient);
 
   const notification = await createNotificationRecord({
     companyId,
-    recipientUserId: payload.recipientUserId,
+    recipientUserId: recipient._id,
     senderUserId: currentUser._id,
     type: payload.type,
     title: payload.title,
@@ -228,7 +279,7 @@ export const sendNotificationService = async (currentUser, payload) => {
     createdBy: currentUser._id,
   });
 
-  emitNotificationToUser(payload.recipientUserId.toString(), notification);
+  emitNotificationToUser(recipient._id.toString(), notification);
 
   return notification;
 };
