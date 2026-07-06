@@ -33,7 +33,8 @@ import {
 const cookieOptions = {
   httpOnly: true,
   secure: env.COOKIE_SECURE,
-  sameSite: "strict",
+  sameSite: env.COOKIE_SECURE ? "none" : "lax",
+  path: "/",
 };
 
 //  X-Forwarded-For can be a comma-separated list of IPs
