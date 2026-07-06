@@ -180,7 +180,13 @@ export const createCompanyAdminService = async (
     throw new ApiError(400, "Cannot create admin for suspended company.");
   }
 
-  const exists = await findUserByEmail(payload.email);
+  const adminEmail = String(payload.email || "").trim().toLowerCase();
+
+  if (!adminEmail) {
+    throw new ApiError(400, "Company admin email is required.");
+  }
+
+  const exists = await findUserByEmail(adminEmail);
 
   if (exists) {
     throw new ApiError(409, "Email already exists.");
@@ -195,7 +201,7 @@ export const createCompanyAdminService = async (
     isPlatformUser: false,
 
     name: payload.name,
-    email: payload.email,
+    email: adminEmail,
     mobile: payload.mobile || "",
     passwordHash,
 
@@ -207,13 +213,10 @@ export const createCompanyAdminService = async (
 
     status: USER_STATUS.ACTIVE,
 
-    // User must verify email before login.
     isEmailVerified: false,
     emailVerificationTokenHash: verification.tokenHash,
     emailVerificationExpiresAt: verification.expiresAt,
 
-    // Direct login after email verification.
-    // If you want password change first, change this to true.
     forcePasswordChange: false,
 
     createdBy: currentUser._id,
@@ -222,8 +225,15 @@ export const createCompanyAdminService = async (
   const verifyUrl = `${env.CLIENT_ORIGIN}/verify-email?token=${verification.token}`;
 
   try {
+    console.log("[company-admin-verification] Sending verification email", {
+      to: adminEmail,
+      from: env.SMTP_FROM || env.SMTP_USER,
+      companyId: company._id.toString(),
+      userId: user._id.toString(),
+    });
+
     await sendVerificationEmail({
-      to: user.email,
+      to: adminEmail,
       name: user.name,
       verifyUrl,
     });
@@ -236,7 +246,10 @@ export const createCompanyAdminService = async (
     );
   }
 
-  return user.toSafeObject();
+  return {
+    ...user.toSafeObject(),
+    verificationEmailSentTo: adminEmail,
+  };
 };
 
 export const getMyCompanyProfileService = async (currentUser) => {
