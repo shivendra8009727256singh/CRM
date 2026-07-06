@@ -6,6 +6,8 @@ import {
 } from "../models/Employee.js";
 
 const objectId = Joi.string().hex().length(24);
+const optionalObjectId = objectId.allow("", null);
+const optionalCode = Joi.string().trim().uppercase().max(50).allow("", null);
 
 const addressSchema = Joi.object({
   addressLine1: Joi.string().trim().allow("", null),
@@ -25,8 +27,13 @@ const emergencyContactSchema = Joi.object({
 });
 
 export const createEmployeeSchema = Joi.object({
-  userId: objectId.allow(null),
+  // Frontend should not ask HR to type MongoDB ids. These id fields are kept
+  // only for hidden dropdown values/backward compatibility. Prefer the *Code
+  // fields below, such as employeeCode, branchCode, departmentCode, etc.
+  userId: optionalObjectId,
+  userEmail: Joi.string().email().lowercase().trim().allow("", null),
 
+  employeeCode: optionalCode,
   employeePhoto: Joi.string().trim().allow("", null),
 
   firstName: Joi.string().trim().min(2).max(80).required(),
@@ -37,7 +44,7 @@ export const createEmployeeSchema = Joi.object({
     .valid("male", "female", "other", "prefer_not_to_say")
     .default("prefer_not_to_say"),
 
-  dateOfBirth: Joi.date().allow(null),
+  dateOfBirth: Joi.date().allow("", null),
 
   bloodGroup: Joi.string()
     .valid("A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", "")
@@ -59,10 +66,17 @@ export const createEmployeeSchema = Joi.object({
   permanentAddress: addressSchema.default({}),
   emergencyContact: emergencyContactSchema.default({}),
 
-  branchId: objectId.allow(null),
-  departmentId: objectId.allow(null),
-  designationId: objectId.allow(null),
-  reportingManagerId: objectId.allow(null),
+  branchId: optionalObjectId,
+  branchCode: optionalCode,
+
+  departmentId: optionalObjectId,
+  departmentCode: optionalCode,
+
+  designationId: optionalObjectId,
+  designationCode: optionalCode,
+
+  reportingManagerId: optionalObjectId,
+  reportingManagerCode: optionalCode,
 
   employmentType: Joi.string()
     .valid(...Object.values(EMPLOYMENT_TYPE))
@@ -74,11 +88,12 @@ export const createEmployeeSchema = Joi.object({
 
   workLocation: Joi.string().trim().allow("", null),
 
-  shiftId: objectId.allow(null),
+  shiftId: optionalObjectId,
+  shiftCode: optionalCode,
 
   joiningDate: Joi.date().required(),
-  confirmationDate: Joi.date().allow(null),
-  probationEndDate: Joi.date().allow(null),
+  confirmationDate: Joi.date().allow("", null),
+  probationEndDate: Joi.date().allow("", null),
 
   noticePeriodDays: Joi.number().integer().min(0).default(30),
 
@@ -86,9 +101,14 @@ export const createEmployeeSchema = Joi.object({
     .valid(...Object.values(EMPLOYEE_STATUS))
     .default(EMPLOYEE_STATUS.ACTIVE),
 
-  salaryStructureId: objectId.allow(null),
-  attendancePolicyId: objectId.allow(null),
-  leavePolicyId: objectId.allow(null),
+  salaryStructureId: optionalObjectId,
+  salaryStructureCode: optionalCode,
+
+  attendancePolicyId: optionalObjectId,
+  attendancePolicyCode: optionalCode,
+
+  leavePolicyId: optionalObjectId,
+  leavePolicyCode: optionalCode,
 
   tags: Joi.array().items(Joi.string().trim()).default([]),
   notes: Joi.string().trim().allow("", null),
@@ -104,7 +124,7 @@ export const updateEmployeeStatusSchema = Joi.object({
     .valid(...Object.values(EMPLOYEE_STATUS))
     .required(),
 
-  exitDate: Joi.date().allow(null),
+  exitDate: Joi.date().allow("", null),
 
   exitReason: Joi.string().trim().allow("", null),
 });
@@ -127,7 +147,7 @@ export const employeeFamilySchema = Joi.object({
 
         fullName: Joi.string().trim().min(2).required(),
 
-        dateOfBirth: Joi.date().allow(null),
+        dateOfBirth: Joi.date().allow("", null),
 
         occupation: Joi.string().trim().allow("", null),
 
@@ -213,7 +233,7 @@ export const employeeDocumentSchema = Joi.object({
 
         mimeType: Joi.string().trim().allow("", null),
 
-        expiryDate: Joi.date().allow(null),
+        expiryDate: Joi.date().allow("", null),
 
         verified: Joi.boolean().default(false),
 
