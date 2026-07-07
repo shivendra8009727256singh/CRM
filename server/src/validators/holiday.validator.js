@@ -1,28 +1,41 @@
 import Joi from "joi";
 
-const objectId = Joi.string().hex().length(24);
 const code = Joi.string().trim().uppercase().min(1).max(50);
 
-export const createHolidaySchema = Joi.object({
-  branchId: objectId.allow("", null),
-  branchCode: code.allow("", null),
+const withHolidayAliases = (schema) => {
+  return schema
+    .rename("branchcode", "branchCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("branch_code", "branchCode", {
+      ignoreUndefined: true,
+      override: true,
+    });
+};
 
-  holidayName: Joi.string().trim().min(2).max(120).required(),
+export const createHolidaySchema = withHolidayAliases(
+  Joi.object({
+    branchCode: code.allow("", null),
 
-  date: Joi.date().required(),
+    holidayName: Joi.string().trim().min(2).max(120).required(),
 
-  type: Joi.string()
-    .valid("public", "company", "optional", "festival")
-    .default("company"),
+    date: Joi.date().required(),
 
-  description: Joi.string().trim().allow("", null),
+    type: Joi.string()
+      .valid("public", "company", "optional", "festival")
+      .default("company"),
 
-  isPaid: Joi.boolean().default(true),
+    description: Joi.string().trim().allow("", null),
 
-  isActive: Joi.boolean().default(true),
-});
+    isPaid: Joi.boolean().default(true),
 
-export const updateHolidaySchema = createHolidaySchema.fork(
-  ["holidayName", "date"],
-  (schema) => schema.optional()
+    isActive: Joi.boolean().default(true),
+  })
+);
+
+export const updateHolidaySchema = withHolidayAliases(
+  createHolidaySchema.fork(["holidayName", "date"], (schema) =>
+    schema.optional()
+  )
 );
