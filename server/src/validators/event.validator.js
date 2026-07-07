@@ -5,53 +5,77 @@ import {
   EVENT_STATUS,
 } from "../models/HREvent.js";
 
-const objectId = Joi.string().hex().length(24);
 const code = Joi.string().trim().uppercase().min(1).max(50);
 
-const participantSchema = Joi.object({
-  employeeId: objectId.allow("", null),
-  employeeCode: code.allow("", null),
+const withEventAliases = (schema) => {
+  return schema
+    .rename("eventcode", "eventCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("event_code", "eventCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("employeecode", "employeeCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("employee_code", "employeeCode", {
+      ignoreUndefined: true,
+      override: true,
+    });
+};
 
-  status: Joi.string()
-    .valid("invited", "accepted", "declined", "attended")
-    .default("invited"),
-}).or("employeeId", "employeeCode");
+const participantSchema = withEventAliases(
+  Joi.object({
+    employeeCode: code.required(),
 
-export const createEventSchema = Joi.object({
-  eventTitle: Joi.string().trim().max(200).required(),
+    status: Joi.string()
+      .valid("invited", "accepted", "declined", "attended")
+      .default("invited"),
+  })
+);
 
-  eventCode: Joi.string().trim().uppercase().max(30).required(),
+export const createEventSchema = withEventAliases(
+  Joi.object({
+    eventTitle: Joi.string().trim().max(200).required(),
 
-  eventType: Joi.string()
-    .valid(...Object.values(EVENT_TYPE))
-    .default(EVENT_TYPE.COMPANY_EVENT),
+    eventCode: Joi.string().trim().uppercase().max(30).required(),
 
-  description: Joi.string().trim().allow("", null),
+    eventType: Joi.string()
+      .valid(...Object.values(EVENT_TYPE))
+      .default(EVENT_TYPE.COMPANY_EVENT),
 
-  venue: Joi.string().trim().allow("", null),
+    description: Joi.string().trim().allow("", null),
 
-  meetingLink: Joi.string().trim().allow("", null),
+    venue: Joi.string().trim().allow("", null),
 
-  bannerImage: Joi.string().trim().allow("", null),
+    meetingLink: Joi.string().trim().allow("", null),
 
-  startDateTime: Joi.date().required(),
+    bannerImage: Joi.string().trim().allow("", null),
 
-  endDateTime: Joi.date().required(),
+    startDateTime: Joi.date().required(),
 
-  allDay: Joi.boolean().default(false),
+    endDateTime: Joi.date().required(),
 
-  participants: Joi.array().items(participantSchema).default([]),
+    allDay: Joi.boolean().default(false),
 
-  notifyEmployees: Joi.boolean().default(true),
+    participants: Joi.array().items(participantSchema).default([]),
 
-  status: Joi.string()
-    .valid(...Object.values(EVENT_STATUS))
-    .default(EVENT_STATUS.DRAFT),
-});
+    notifyEmployees: Joi.boolean().default(true),
 
-export const updateEventSchema = createEventSchema.fork(
-  ["eventTitle", "eventCode", "startDateTime", "endDateTime"],
-  (schema) => schema.optional()
+    status: Joi.string()
+      .valid(...Object.values(EVENT_STATUS))
+      .default(EVENT_STATUS.DRAFT),
+  })
+);
+
+export const updateEventSchema = withEventAliases(
+  createEventSchema.fork(
+    ["eventTitle", "eventCode", "startDateTime", "endDateTime"],
+    (schema) => schema.optional()
+  )
 );
 
 export const updateEventStatusSchema = Joi.object({
