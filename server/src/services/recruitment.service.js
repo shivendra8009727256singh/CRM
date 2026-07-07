@@ -1088,6 +1088,35 @@ export const deleteJobOpeningService = async (currentUser, idOrCode) => {
   return true;
 };
 
+const ensureCandidateNoDuplicates = async (
+  companyId,
+  payload,
+  currentCandidateId = null
+) => {
+  if (payload.email) {
+    const existing = await findCandidateByEmail(companyId, payload.email);
+    if (
+      existing &&
+      (!currentCandidateId ||
+        existing._id.toString() !== currentCandidateId.toString())
+    ) {
+      throw new ApiError(409, "A candidate with this email already exists.");
+    }
+  }
+
+  if (payload.mobile) {
+    const existing = await findCandidateByMobile(companyId, payload.mobile);
+    if (
+      existing &&
+      (!currentCandidateId ||
+        existing._id.toString() !== currentCandidateId.toString())
+    ) {
+      throw new ApiError(409, "A candidate with this mobile already exists.");
+    }
+  }
+};
+
+
 /* ================= CANDIDATES ================= */
 
 export const createCandidateService = async (currentUser, payload) => {
