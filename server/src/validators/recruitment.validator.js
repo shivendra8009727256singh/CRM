@@ -17,8 +17,8 @@ import {
   INTERVIEW_RESULT,
 } from "../models/Interview.js";
 
-const objectId = Joi.string().hex().length(24);
 const code = Joi.string().trim().uppercase().min(1).max(50);
+const optionalCode = code.allow("", null);
 
 const salaryRangeSchema = Joi.object({
   min: Joi.number().min(0).default(0),
@@ -40,21 +40,173 @@ const addressSchema = Joi.object({
   pincode: Joi.string().trim().allow("", null),
 });
 
+const withRecruitmentAliases = (schema) => {
+  return schema
+    .rename("branchcode", "branchCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("branch_code", "branchCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("departmentcode", "departmentCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("department_code", "departmentCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("designationcode", "designationCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("designation_code", "designationCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("hiringmanagercode", "hiringManagerCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("hiring_manager_code", "hiringManagerCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("hiringmanageremployeecode", "hiringManagerEmployeeCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("hiring_manager_employee_code", "hiringManagerEmployeeCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("jobcode", "jobCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("job_code", "jobCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("candidatecode", "candidateCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("candidate_code", "candidateCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("employeecode", "employeeCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("employee_code", "employeeCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("referredbyemployeecode", "referredByEmployeeCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("referred_by_employee_code", "referredByEmployeeCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("recruitercode", "recruiterCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("recruiter_code", "recruiterCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("recruiteremployeecode", "recruiterEmployeeCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("recruiter_employee_code", "recruiterEmployeeCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("intervieweremployeecode", "interviewerEmployeeCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("interviewer_employee_code", "interviewerEmployeeCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("reportingmanagercode", "reportingManagerCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("reporting_manager_code", "reportingManagerCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("reportingmanageremployeecode", "reportingManagerEmployeeCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("reporting_manager_employee_code", "reportingManagerEmployeeCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("shiftcode", "shiftCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("shift_code", "shiftCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("leavepolicycode", "leavePolicyCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("leave_policy_code", "leavePolicyCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("attendancepolicycode", "attendancePolicyCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("attendance_policy_code", "attendancePolicyCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("salarystructurecode", "salaryStructureCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("salary_structure_code", "salaryStructureCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("structurecode", "structureCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("structure_code", "structureCode", {
+      ignoreUndefined: true,
+      override: true,
+    });
+};
+
 /* ---------------- Job Opening ---------------- */
 
 const jobOpeningBaseSchema = {
-  branchId: objectId.allow("", null),
-  branchCode: code.allow("", null),
+  branchCode: optionalCode,
 
-  departmentId: objectId.allow("", null),
-  departmentCode: code.allow("", null),
+  departmentCode: optionalCode,
 
-  designationId: objectId.allow("", null),
-  designationCode: code.allow("", null),
+  designationCode: optionalCode,
 
-  hiringManagerId: objectId.allow("", null),
-  hiringManagerCode: code.allow("", null),
-  hiringManagerEmployeeCode: code.allow("", null),
+  hiringManagerCode: optionalCode,
+  hiringManagerEmployeeCode: optionalCode,
 
   jobTitle: Joi.string().trim().min(2).max(150),
 
@@ -113,12 +265,16 @@ const jobOpeningBaseSchema = {
   notes: Joi.string().trim().allow("", null),
 };
 
-export const createJobOpeningSchema = Joi.object({
-  ...jobOpeningBaseSchema,
-  jobTitle: jobOpeningBaseSchema.jobTitle.required(),
-});
+export const createJobOpeningSchema = withRecruitmentAliases(
+  Joi.object({
+    ...jobOpeningBaseSchema,
+    jobTitle: jobOpeningBaseSchema.jobTitle.required(),
+  })
+);
 
-export const updateJobOpeningSchema = Joi.object(jobOpeningBaseSchema);
+export const updateJobOpeningSchema = withRecruitmentAliases(
+  Joi.object(jobOpeningBaseSchema)
+);
 
 export const updateJobStatusSchema = Joi.object({
   status: Joi.string()
@@ -129,9 +285,7 @@ export const updateJobStatusSchema = Joi.object({
 /* ---------------- Candidate ---------------- */
 
 const candidateBaseSchema = {
-  appliedJobId: objectId.allow("", null),
-  jobOpeningId: objectId.allow("", null),
-  jobCode: code.allow("", null),
+  jobCode: optionalCode,
 
   firstName: Joi.string().trim().min(2),
   middleName: Joi.string().trim().allow("", null),
@@ -216,12 +370,10 @@ const candidateBaseSchema = {
     .valid(...Object.values(CANDIDATE_SOURCE))
     .default(CANDIDATE_SOURCE.CAREER_PORTAL),
 
-  referredBy: objectId.allow("", null),
-  referredByEmployeeCode: code.allow("", null),
+  referredByEmployeeCode: optionalCode,
 
-  recruiterId: objectId.allow("", null),
-  recruiterCode: code.allow("", null),
-  recruiterEmployeeCode: code.allow("", null),
+  recruiterCode: optionalCode,
+  recruiterEmployeeCode: optionalCode,
 
   status: Joi.string()
     .valid(...Object.values(CANDIDATE_STATUS))
@@ -232,14 +384,19 @@ const candidateBaseSchema = {
   remarks: Joi.string().trim().allow("", null),
 };
 
-export const createCandidateSchema = Joi.object({
-  ...candidateBaseSchema,
-  firstName: candidateBaseSchema.firstName.required(),
-  lastName: candidateBaseSchema.lastName.required(),
-  mobile: candidateBaseSchema.mobile.required(),
-}).or("appliedJobId", "jobOpeningId", "jobCode");
+export const createCandidateSchema = withRecruitmentAliases(
+  Joi.object({
+    ...candidateBaseSchema,
+    jobCode: code.required(),
+    firstName: candidateBaseSchema.firstName.required(),
+    lastName: candidateBaseSchema.lastName.required(),
+    mobile: candidateBaseSchema.mobile.required(),
+  })
+);
 
-export const updateCandidateSchema = Joi.object(candidateBaseSchema);
+export const updateCandidateSchema = withRecruitmentAliases(
+  Joi.object(candidateBaseSchema)
+);
 
 export const updateCandidateStatusSchema = Joi.object({
   status: Joi.string()
@@ -251,50 +408,49 @@ export const updateCandidateStatusSchema = Joi.object({
 
 /* ---------------- Interview ---------------- */
 
-const panelMemberSchema = Joi.object({
-  employeeId: objectId.allow("", null),
-  employeeCode: code.allow("", null),
+const panelMemberSchema = withRecruitmentAliases(
+  Joi.object({
+    employeeCode: optionalCode,
 
-  name: Joi.string().trim().allow("", null),
+    name: Joi.string().trim().allow("", null),
 
-  email: Joi.string().email().lowercase().trim().allow("", null),
+    email: Joi.string().email().lowercase().trim().allow("", null),
 
-  role: Joi.string().trim().allow("", null),
-});
+    role: Joi.string().trim().allow("", null),
+  })
+);
 
-const feedbackSchema = Joi.object({
-  interviewerId: objectId.allow("", null),
-  interviewerEmployeeCode: code.allow("", null),
-  employeeCode: code.allow("", null),
+const feedbackSchema = withRecruitmentAliases(
+  Joi.object({
+    interviewerEmployeeCode: optionalCode,
+    employeeCode: optionalCode,
 
-  technicalRating: Joi.number().min(0).max(5).default(0),
+    technicalRating: Joi.number().min(0).max(5).default(0),
 
-  communicationRating: Joi.number().min(0).max(5).default(0),
+    communicationRating: Joi.number().min(0).max(5).default(0),
 
-  cultureFitRating: Joi.number().min(0).max(5).default(0),
+    cultureFitRating: Joi.number().min(0).max(5).default(0),
 
-  overallRating: Joi.number().min(0).max(5).default(0),
+    overallRating: Joi.number().min(0).max(5).default(0),
 
-  strengths: Joi.string().trim().allow("", null),
+    strengths: Joi.string().trim().allow("", null),
 
-  weaknesses: Joi.string().trim().allow("", null),
+    weaknesses: Joi.string().trim().allow("", null),
 
-  remarks: Joi.string().trim().allow("", null),
+    remarks: Joi.string().trim().allow("", null),
 
-  recommendation: Joi.string()
-    .valid("hire", "reject", "hold", "next_round", "")
-    .default(""),
+    recommendation: Joi.string()
+      .valid("hire", "reject", "hold", "next_round", "")
+      .default(""),
 
-  submittedAt: Joi.date().allow(null),
-});
+    submittedAt: Joi.date().allow(null),
+  })
+);
 
 const interviewBaseSchema = {
-  candidateId: objectId.allow("", null),
-  candidateCode: code.allow("", null),
+  candidateCode: optionalCode,
 
-  jobOpeningId: objectId.allow("", null),
-  appliedJobId: objectId.allow("", null),
-  jobCode: code.allow("", null),
+  jobCode: optionalCode,
 
   roundName: Joi.string().trim().min(2).default("Round 1"),
 
@@ -333,33 +489,39 @@ const interviewBaseSchema = {
   finalRemarks: Joi.string().trim().allow("", null),
 };
 
-export const createInterviewSchema = Joi.object({
-  ...interviewBaseSchema,
-  scheduledDate: interviewBaseSchema.scheduledDate.required(),
-  startTime: interviewBaseSchema.startTime.required(),
-})
-  .or("candidateId", "candidateCode")
-  .or("jobOpeningId", "appliedJobId", "jobCode");
+export const createInterviewSchema = withRecruitmentAliases(
+  Joi.object({
+    ...interviewBaseSchema,
+    candidateCode: code.required(),
+    jobCode: code.required(),
+    scheduledDate: interviewBaseSchema.scheduledDate.required(),
+    startTime: interviewBaseSchema.startTime.required(),
+  })
+);
 
-export const updateInterviewSchema = Joi.object(interviewBaseSchema);
+export const updateInterviewSchema = withRecruitmentAliases(
+  Joi.object(interviewBaseSchema)
+);
 
-export const updateInterviewResultSchema = Joi.object({
-  status: Joi.string()
-    .valid(...Object.values(INTERVIEW_STATUS))
-    .required(),
+export const updateInterviewResultSchema = withRecruitmentAliases(
+  Joi.object({
+    status: Joi.string()
+      .valid(...Object.values(INTERVIEW_STATUS))
+      .required(),
 
-  result: Joi.string()
-    .valid(...Object.values(INTERVIEW_RESULT))
-    .required(),
+    result: Joi.string()
+      .valid(...Object.values(INTERVIEW_RESULT))
+      .required(),
 
-  feedback: Joi.array().items(feedbackSchema).default([]),
+    feedback: Joi.array().items(feedbackSchema).default([]),
 
-  finalRemarks: Joi.string().trim().allow("", null),
+    finalRemarks: Joi.string().trim().allow("", null),
 
-  rescheduleReason: Joi.string().trim().allow("", null),
+    rescheduleReason: Joi.string().trim().allow("", null),
 
-  cancelledReason: Joi.string().trim().allow("", null),
-});
+    cancelledReason: Joi.string().trim().allow("", null),
+  })
+);
 
 /* ---------------- Offer Letter ---------------- */
 
@@ -384,12 +546,9 @@ const offerSalarySchema = Joi.object({
 });
 
 const offerBaseSchema = {
-  candidateId: objectId.allow("", null),
-  candidateCode: code.allow("", null),
+  candidateCode: optionalCode,
 
-  jobOpeningId: objectId.allow("", null),
-  appliedJobId: objectId.allow("", null),
-  jobCode: code.allow("", null),
+  jobCode: optionalCode,
 
   joiningDate: Joi.date(),
 
@@ -410,15 +569,17 @@ const offerBaseSchema = {
   remarks: Joi.string().trim().allow("", null),
 };
 
-export const createOfferSchema = Joi.object({
-  ...offerBaseSchema,
-  joiningDate: offerBaseSchema.joiningDate.required(),
-  salary: offerBaseSchema.salary.required(),
-})
-  .or("candidateId", "candidateCode")
-  .or("jobOpeningId", "appliedJobId", "jobCode");
+export const createOfferSchema = withRecruitmentAliases(
+  Joi.object({
+    ...offerBaseSchema,
+    candidateCode: code.required(),
+    jobCode: code.required(),
+    joiningDate: offerBaseSchema.joiningDate.required(),
+    salary: offerBaseSchema.salary.required(),
+  })
+);
 
-export const updateOfferSchema = Joi.object(offerBaseSchema);
+export const updateOfferSchema = withRecruitmentAliases(Joi.object(offerBaseSchema));
 
 export const updateOfferStatusSchema = Joi.object({
   status: Joi.string()
@@ -434,39 +595,33 @@ export const acceptOfferSchema = Joi.object({
 
 /* ---------------- Candidate Conversion ---------------- */
 
-export const convertCandidateSchema = Joi.object({
-  reportingManagerId: objectId.allow("", null),
-  reportingManagerCode: code.allow("", null),
-  reportingManagerEmployeeCode: code.allow("", null),
+export const convertCandidateSchema = withRecruitmentAliases(
+  Joi.object({
+    reportingManagerCode: optionalCode,
+    reportingManagerEmployeeCode: optionalCode,
 
-  branchId: objectId.allow("", null),
-  branchCode: code.allow("", null),
+    branchCode: optionalCode,
 
-  departmentId: objectId.allow("", null),
-  departmentCode: code.allow("", null),
+    departmentCode: optionalCode,
 
-  designationId: objectId.allow("", null),
-  designationCode: code.allow("", null),
+    designationCode: optionalCode,
 
-  workLocation: Joi.string().trim().allow("", null),
+    workLocation: Joi.string().trim().allow("", null),
 
-  workMode: Joi.string()
-    .valid("office", "remote", "hybrid", "field")
-    .default("office"),
+    workMode: Joi.string()
+      .valid("office", "remote", "hybrid", "field")
+      .default("office"),
 
-  shiftId: objectId.allow("", null),
-  shiftCode: code.allow("", null),
+    shiftCode: optionalCode,
 
-  leavePolicyId: objectId.allow("", null),
-  leavePolicyCode: code.allow("", null),
-  leavePolicyCodeValue: code.allow("", null),
+    leavePolicyCode: optionalCode,
+    leavePolicyCodeValue: optionalCode,
 
-  attendancePolicyId: objectId.allow("", null),
-  attendancePolicyCode: code.allow("", null),
+    attendancePolicyCode: optionalCode,
 
-  salaryStructureId: objectId.allow("", null),
-  salaryStructureCode: code.allow("", null),
-  structureCode: code.allow("", null),
+    salaryStructureCode: optionalCode,
+    structureCode: optionalCode,
 
-  sendWelcomeEmail: Joi.boolean().default(true),
-});
+    sendWelcomeEmail: Joi.boolean().default(true),
+  })
+);
