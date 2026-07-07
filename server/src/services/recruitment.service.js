@@ -18,7 +18,11 @@ import { EMPLOYMENT_TYPE, EMPLOYEE_STATUS } from "../models/Employee.js";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { env } from "../config/env.js";
-import { User } from "../models/User.js";
+import {
+  createUserRecord,
+  deleteUserById,
+  findUserByEmail,
+} from "../repositories/user.repository.js";
 
 import {
   createEmployeeRecord,
@@ -1559,7 +1563,7 @@ export const convertCandidateToEmployeeService = async (
     candidate.email ||
     `${candidate.candidateCode.toLowerCase()}@noemail.local`;
 
-  const existingUser = await User.findOne({ email: email.toLowerCase() });
+    const existingUser = await findUserByEmail(email.toLowerCase());
 
   if (existingUser) {
     throw new ApiError(409, "User email already exists.");
@@ -1569,21 +1573,21 @@ export const convertCandidateToEmployeeService = async (
   const tempPassword = generateTempPassword();
   const passwordHash = await bcrypt.hash(tempPassword, env.BCRYPT_ROUNDS);
 
-  const user = await User.create({
+  const user = await createUserRecord({
     companyId,
     isPlatformUser: false,
     name: candidate.fullName || `${candidate.firstName} ${candidate.lastName}`,
-    email,
+    email: email.toLowerCase(),
     mobile: candidate.mobile,
     passwordHash,
     role: ROLES.EMPLOYEE,
     permissions: ROLE_PERMISSIONS[ROLES.EMPLOYEE] || [],
     status: USER_STATUS.ACTIVE,
-
+  
     // This employee is created by HR after accepted offer.
     // Welcome email includes temp password, so do not block login by verification.
     isEmailVerified: true,
-
+  
     forcePasswordChange: true,
     createdBy: currentUser._id,
   });
@@ -1639,7 +1643,7 @@ export const convertCandidateToEmployeeService = async (
       createdBy: currentUser._id,
     });
   } catch (error) {
-    await User.findByIdAndDelete(user._id);
+    await deleteUserById(user._id);
     throw error;
   }
 
