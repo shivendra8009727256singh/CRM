@@ -1563,7 +1563,7 @@ export const convertCandidateToEmployeeService = async (
     candidate.email ||
     `${candidate.candidateCode.toLowerCase()}@noemail.local`;
 
-    const existingUser = await findUserByEmail(email.toLowerCase());
+  const existingUser = await findUserByEmail(email.toLowerCase());
 
   if (existingUser) {
     throw new ApiError(409, "User email already exists.");
