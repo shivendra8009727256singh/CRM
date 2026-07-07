@@ -5,8 +5,6 @@ import {
   WORK_MODE,
 } from "../models/Employee.js";
 
-const objectId = Joi.string().hex().length(24);
-const optionalObjectId = objectId.allow("", null);
 const optionalCode = Joi.string().trim().uppercase().max(50).allow("", null);
 
 const addressSchema = Joi.object({
@@ -26,11 +24,112 @@ const emergencyContactSchema = Joi.object({
   address: Joi.string().trim().allow("", null),
 });
 
-export const createEmployeeSchema = Joi.object({
-  // Frontend should not ask HR to type MongoDB ids. These id fields are kept
-  // only for hidden dropdown values/backward compatibility. Prefer the *Code
-  // fields below, such as employeeCode, branchCode, departmentCode, etc.
-  userId: optionalObjectId,
+/**
+ * Frontend-safe aliases.
+ * This lets frontend accidentally send lower/snake-case names without breaking.
+ * MongoDB ObjectId fields are intentionally not accepted.
+ */
+const withEmployeeAliases = (schema) => {
+  return schema
+    .rename("useremail", "userEmail", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("user_email", "userEmail", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("employeecode", "employeeCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("employee_code", "employeeCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("branchcode", "branchCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("branch_code", "branchCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("departmentcode", "departmentCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("department_code", "departmentCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("designationcode", "designationCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("designation_code", "designationCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("reportingmanagercode", "reportingManagerCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("reporting_manager_code", "reportingManagerCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("reportingmanageremployeecode", "reportingManagerEmployeeCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("reporting_manager_employee_code", "reportingManagerEmployeeCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("shiftcode", "shiftCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("shift_code", "shiftCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("salarystructurecode", "salaryStructureCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("salary_structure_code", "salaryStructureCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("structurecode", "structureCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("structure_code", "structureCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("attendancepolicycode", "attendancePolicyCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("attendance_policy_code", "attendancePolicyCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("leavepolicycode", "leavePolicyCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("leave_policy_code", "leavePolicyCode", {
+      ignoreUndefined: true,
+      override: true,
+    });
+};
+
+const baseEmployeeSchema = Joi.object({
   userEmail: Joi.string().email().lowercase().trim().allow("", null),
 
   employeeCode: optionalCode,
@@ -66,17 +165,12 @@ export const createEmployeeSchema = Joi.object({
   permanentAddress: addressSchema.default({}),
   emergencyContact: emergencyContactSchema.default({}),
 
-  branchId: optionalObjectId,
   branchCode: optionalCode,
-
-  departmentId: optionalObjectId,
   departmentCode: optionalCode,
-
-  designationId: optionalObjectId,
   designationCode: optionalCode,
 
-  reportingManagerId: optionalObjectId,
   reportingManagerCode: optionalCode,
+  reportingManagerEmployeeCode: optionalCode,
 
   employmentType: Joi.string()
     .valid(...Object.values(EMPLOYMENT_TYPE))
@@ -88,7 +182,6 @@ export const createEmployeeSchema = Joi.object({
 
   workLocation: Joi.string().trim().allow("", null),
 
-  shiftId: optionalObjectId,
   shiftCode: optionalCode,
 
   joiningDate: Joi.date().required(),
@@ -101,23 +194,26 @@ export const createEmployeeSchema = Joi.object({
     .valid(...Object.values(EMPLOYEE_STATUS))
     .default(EMPLOYEE_STATUS.ACTIVE),
 
-  salaryStructureId: optionalObjectId,
   salaryStructureCode: optionalCode,
+  structureCode: optionalCode,
 
-  attendancePolicyId: optionalObjectId,
   attendancePolicyCode: optionalCode,
 
-  leavePolicyId: optionalObjectId,
   leavePolicyCode: optionalCode,
 
   tags: Joi.array().items(Joi.string().trim()).default([]),
   notes: Joi.string().trim().allow("", null),
+
   createLoginAccount: Joi.boolean().default(false),
 });
 
-export const updateEmployeeSchema = createEmployeeSchema.fork(
-  ["firstName", "lastName", "mobile", "joiningDate"],
-  (schema) => schema.optional()
+export const createEmployeeSchema = withEmployeeAliases(baseEmployeeSchema);
+
+export const updateEmployeeSchema = withEmployeeAliases(
+  baseEmployeeSchema.fork(
+    ["firstName", "lastName", "mobile", "joiningDate"],
+    (schema) => schema.optional()
+  )
 );
 
 export const updateEmployeeStatusSchema = Joi.object({
