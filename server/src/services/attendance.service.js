@@ -3,10 +3,7 @@ import { ROLES } from "../constants/roles.js";
 import { ATTENDANCE_STATUS, CHECKIN_SOURCE } from "../models/Attendance.js";
 import { REGULARIZATION_STATUS } from "../models/AttendanceRegularization.js";
 
-import {
-  findEmployeeById,
-  findEmployeeByCode,
-} from "../repositories/employee.repository.js";
+import { findEmployeeByCode } from "../repositories/employee.repository.js";
 
 import {
   createShiftRecord,
@@ -63,6 +60,11 @@ const ensureSameCompany = (companyId, record, message = "Record not found.") => 
   }
 };
 
+const normalizeCode = (value) => {
+  if (value === undefined || value === null || value === "") return null;
+  return String(value).trim().toUpperCase();
+};
+
 const normalizeDate = (date = new Date()) => {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
@@ -81,6 +83,7 @@ const calculateAttendanceStatus = ({
   policy,
 }) => {
   const totalWorkMinutes = calculateMinutes(checkInTime, checkOutTime);
+
   let lateByMinutes = 0;
   let overtimeMinutes = 0;
   let isLate = false;
@@ -128,26 +131,14 @@ const calculateAttendanceStatus = ({
   };
 };
 
-const resolveEmployee = async (companyId, payloadOrCode) => {
-  let employeeId = null;
-  let employeeCode = null;
+const resolveEmployeeByCode = async (companyId, employeeCode) => {
+  const normalizedEmployeeCode = normalizeCode(employeeCode);
 
-  if (typeof payloadOrCode === "string") {
-    employeeCode = payloadOrCode;
-  } else {
-    employeeId = payloadOrCode.employeeId;
-    employeeCode = payloadOrCode.employeeCode;
+  if (!normalizedEmployeeCode) {
+    throw new ApiError(400, "Employee code is required.");
   }
 
-  let employee = null;
-
-  if (employeeId) {
-    employee = await findEmployeeById(employeeId);
-  }
-
-  if (!employee && employeeCode) {
-    employee = await findEmployeeByCode(companyId, employeeCode);
-  }
+  const employee = await findEmployeeByCode(companyId, normalizedEmployeeCode);
 
   if (!employee || employee.companyId.toString() !== companyId.toString()) {
     throw new ApiError(404, "Employee not found.");
@@ -156,42 +147,26 @@ const resolveEmployee = async (companyId, payloadOrCode) => {
   return employee;
 };
 
-const resolveShift = async (companyId, payload = {}) => {
-  const shiftId = payload.shiftId;
-  const shiftCode = payload.shiftCode;
+const resolveShiftByCode = async (companyId, payload = {}) => {
+  const shiftCode = normalizeCode(payload.shiftCode);
 
-  if (!shiftId && !shiftCode) return null;
+  if (!shiftCode) return null;
 
-  let shift = null;
-
-  if (shiftId) {
-    shift = await findShiftById(shiftId);
-  }
-
-  if (!shift && shiftCode) {
-    shift = await findShiftByCode(companyId, shiftCode);
-  }
+  const shift = await findShiftByCode(companyId, shiftCode);
 
   ensureSameCompany(companyId, shift, "Shift not found.");
 
   return shift;
 };
 
-const resolvePolicy = async (companyId, payload = {}) => {
-  const policyId = payload.attendancePolicyId;
-  const policyCode = payload.attendancePolicyCode || payload.policyCode;
+const resolvePolicyByCode = async (companyId, payload = {}) => {
+  const policyCode = normalizeCode(
+    payload.attendancePolicyCode || payload.policyCode
+  );
 
-  if (!policyId && !policyCode) return null;
+  if (!policyCode) return null;
 
-  let policy = null;
-
-  if (policyId) {
-    policy = await findAttendancePolicyById(policyId);
-  }
-
-  if (!policy && policyCode) {
-    policy = await findAttendancePolicyByCode(companyId, policyCode);
-  }
+  const policy = await findAttendancePolicyByCode(companyId, policyCode);
 
   ensureSameCompany(companyId, policy, "Attendance policy not found.");
 
@@ -204,8 +179,9 @@ export const createShiftService = async (currentUser, payload) => {
   ensureManageAccess(currentUser);
 
   const companyId = getCompanyId(currentUser);
+  const shiftCode = normalizeCode(payload.shiftCode);
 
-  const exists = await findShiftByCode(companyId, payload.shiftCode);
+  const exists = await findShiftByCode(companyId, shiftCode);
 
   if (exists) {
     throw new ApiError(409, "Shift code already exists.");
@@ -213,6 +189,7 @@ export const createShiftService = async (currentUser, payload) => {
 
   return createShiftRecord({
     ...payload,
+    shiftCode,
     companyId,
     createdBy: currentUser._id,
   });
@@ -253,10 +230,16 @@ export const updateShiftService = async (currentUser, id, payload) => {
 
   ensureSameCompany(companyId, shift, "Shift not found.");
 
-  return updateShiftById(id, {
+  const updatePayload = {
     ...payload,
     updatedBy: currentUser._id,
-  });
+  };
+
+  if (payload.shiftCode) {
+    updatePayload.shiftCode = normalizeCode(payload.shiftCode);
+  }
+
+  return updateShiftById(id, updatePayload);
 };
 
 export const deleteShiftService = async (currentUser, id) => {
@@ -277,8 +260,9 @@ export const createAttendancePolicyService = async (currentUser, payload) => {
   ensureManageAccess(currentUser);
 
   const companyId = getCompanyId(currentUser);
+  const policyCode = normalizeCode(payload.policyCode);
 
-  const exists = await findAttendancePolicyByCode(companyId, payload.policyCode);
+  const exists = await findAttendancePolicyByCode(companyId, policyCode);
 
   if (exists) {
     throw new ApiError(409, "Attendance policy code already exists.");
@@ -286,6 +270,7 @@ export const createAttendancePolicyService = async (currentUser, payload) => {
 
   return createAttendancePolicyRecord({
     ...payload,
+    policyCode,
     companyId,
     createdBy: currentUser._id,
   });
@@ -326,10 +311,16 @@ export const updateAttendancePolicyService = async (currentUser, id, payload) =>
 
   ensureSameCompany(companyId, policy, "Attendance policy not found.");
 
-  return updateAttendancePolicyById(id, {
+  const updatePayload = {
     ...payload,
     updatedBy: currentUser._id,
-  });
+  };
+
+  if (payload.policyCode) {
+    updatePayload.policyCode = normalizeCode(payload.policyCode);
+  }
+
+  return updateAttendancePolicyById(id, updatePayload);
 };
 
 export const deleteAttendancePolicyService = async (currentUser, id) => {
@@ -349,15 +340,16 @@ export const deleteAttendancePolicyService = async (currentUser, id) => {
 export const checkInService = async (currentUser, payload) => {
   const companyId = getCompanyId(currentUser);
 
-  const employee = await resolveEmployee(companyId, payload);
-  const shift = await resolveShift(companyId, payload);
-  const policy = await resolvePolicy(companyId, payload);
+  const employee = await resolveEmployeeByCode(companyId, payload.employeeCode);
+  const shift = await resolveShiftByCode(companyId, payload);
+  const policy = await resolvePolicyByCode(companyId, payload);
 
   const employeeId = employee._id;
   const shiftId = shift?._id || null;
   const attendancePolicyId = policy?._id || null;
 
   const attendanceDate = normalizeDate(payload.attendanceDate);
+  const checkInTime = payload.checkInTime || new Date();
 
   const existing = await findAttendanceByEmployeeAndDate(
     companyId,
@@ -371,7 +363,7 @@ export const checkInService = async (currentUser, payload) => {
 
   if (existing) {
     return updateAttendanceById(existing._id, {
-      checkInTime: payload.checkInTime || new Date(),
+      checkInTime,
       checkInSource: payload.checkInSource || CHECKIN_SOURCE.WEB,
       checkInLocation: payload.checkInLocation || {},
       checkInSelfie: payload.checkInSelfie || "",
@@ -384,7 +376,7 @@ export const checkInService = async (currentUser, payload) => {
   }
 
   const result = calculateAttendanceStatus({
-    checkInTime: payload.checkInTime || new Date(),
+    checkInTime,
     checkOutTime: null,
     shift,
     policy,
@@ -396,7 +388,7 @@ export const checkInService = async (currentUser, payload) => {
     attendanceDate,
     shiftId,
     attendancePolicyId,
-    checkInTime: payload.checkInTime || new Date(),
+    checkInTime,
     checkInSource: payload.checkInSource || CHECKIN_SOURCE.WEB,
     checkInLocation: payload.checkInLocation || {},
     checkInSelfie: payload.checkInSelfie || "",
@@ -411,7 +403,7 @@ export const checkInService = async (currentUser, payload) => {
 export const checkOutService = async (currentUser, payload) => {
   const companyId = getCompanyId(currentUser);
 
-  const employee = await resolveEmployee(companyId, payload);
+  const employee = await resolveEmployeeByCode(companyId, payload.employeeCode);
   const employeeId = employee._id;
 
   const attendanceDate = normalizeDate(payload.attendanceDate);
@@ -438,15 +430,17 @@ export const checkOutService = async (currentUser, payload) => {
     ? await findAttendancePolicyById(attendance.attendancePolicyId)
     : null;
 
+  const checkOutTime = payload.checkOutTime || new Date();
+
   const result = calculateAttendanceStatus({
     checkInTime: attendance.checkInTime,
-    checkOutTime: payload.checkOutTime || new Date(),
+    checkOutTime,
     shift,
     policy,
   });
 
   return updateAttendanceById(attendance._id, {
-    checkOutTime: payload.checkOutTime || new Date(),
+    checkOutTime,
     checkOutSource: payload.checkOutSource || CHECKIN_SOURCE.WEB,
     checkOutLocation: payload.checkOutLocation || {},
     checkOutSelfie: payload.checkOutSelfie || "",
@@ -466,9 +460,9 @@ export const manualAttendanceService = async (currentUser, payload) => {
 
   const companyId = getCompanyId(currentUser);
 
-  const employee = await resolveEmployee(companyId, payload);
-  const shift = await resolveShift(companyId, payload);
-  const policy = await resolvePolicy(companyId, payload);
+  const employee = await resolveEmployeeByCode(companyId, payload.employeeCode);
+  const shift = await resolveShiftByCode(companyId, payload);
+  const policy = await resolvePolicyByCode(companyId, payload);
 
   const employeeId = employee._id;
   const shiftId = shift?._id || null;
@@ -522,12 +516,8 @@ export const getAttendanceService = async (currentUser, query = {}) => {
 
   const filter = { companyId };
 
-  if (query.employeeId) {
-    filter.employeeId = query.employeeId;
-  }
-
   if (query.employeeCode) {
-    const employee = await resolveEmployee(companyId, query.employeeCode);
+    const employee = await resolveEmployeeByCode(companyId, query.employeeCode);
     filter.employeeId = employee._id;
   }
 
@@ -569,22 +559,14 @@ export const updateAttendanceStatusService = async (currentUser, id, payload) =>
 export const createRegularizationService = async (currentUser, payload) => {
   const companyId = getCompanyId(currentUser);
 
-  let attendance = null;
+  const employee = await resolveEmployeeByCode(companyId, payload.employeeCode);
+  const attendanceDate = normalizeDate(payload.attendanceDate);
 
-  if (payload.attendanceId) {
-    attendance = await findAttendanceById(payload.attendanceId);
-  }
-
-  if (!attendance && (payload.employeeId || payload.employeeCode)) {
-    const employee = await resolveEmployee(companyId, payload);
-    const attendanceDate = normalizeDate(payload.attendanceDate || new Date());
-
-    attendance = await findAttendanceByEmployeeAndDate(
-      companyId,
-      employee._id,
-      attendanceDate
-    );
-  }
+  const attendance = await findAttendanceByEmployeeAndDate(
+    companyId,
+    employee._id,
+    attendanceDate
+  );
 
   ensureSameCompany(companyId, attendance, "Attendance record not found.");
 
@@ -610,12 +592,8 @@ export const getRegularizationsService = async (currentUser, query = {}) => {
 
   const filter = { companyId };
 
-  if (query.employeeId) {
-    filter.employeeId = query.employeeId;
-  }
-
   if (query.employeeCode) {
-    const employee = await resolveEmployee(companyId, query.employeeCode);
+    const employee = await resolveEmployeeByCode(companyId, query.employeeCode);
     filter.employeeId = employee._id;
   }
 
@@ -641,7 +619,11 @@ export const updateRegularizationStatusService = async (
   const companyId = getCompanyId(currentUser);
   const regularization = await findRegularizationById(id);
 
-  ensureSameCompany(companyId, regularization, "Regularization request not found.");
+  ensureSameCompany(
+    companyId,
+    regularization,
+    "Regularization request not found."
+  );
 
   const updatePayload = {
     status: payload.status,
@@ -726,15 +708,12 @@ export const getAttendanceDashboardService = async (currentUser) => {
 
 export const getMonthlyAttendanceService = async (
   currentUser,
-  employeeRef,
+  employeeCode,
   query = {}
 ) => {
   const companyId = getCompanyId(currentUser);
 
-  const employee = await resolveEmployee(companyId, {
-    employeeId: employeeRef,
-    employeeCode: employeeRef,
-  });
+  const employee = await resolveEmployeeByCode(companyId, employeeCode);
 
   const now = new Date();
   const year = Number(query.year || now.getFullYear());
@@ -752,8 +731,8 @@ export const getMonthlyAttendanceService = async (
   );
 
   return {
-    employeeId: employee._id,
     employeeCode: employee.employeeCode,
+    employeeName: employee.displayName,
     year,
     month,
     records,

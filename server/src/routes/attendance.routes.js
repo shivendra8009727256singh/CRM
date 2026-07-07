@@ -157,7 +157,7 @@ router.patch(
 ====================================================== */
 
 router.get(
-  "/monthly/:employeeId",
+  "/monthly/:employeeCode",
   requirePermission(PERMISSIONS.EMPLOYEE_READ),
   getMonthlyAttendance
 );

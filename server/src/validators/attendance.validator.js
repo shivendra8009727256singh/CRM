@@ -8,7 +8,6 @@ import {
 import { ATTENDANCE_STATUS, CHECKIN_SOURCE } from "../models/Attendance.js";
 import { REGULARIZATION_STATUS } from "../models/AttendanceRegularization.js";
 
-const objectId = Joi.string().hex().length(24);
 const code = Joi.string().trim().uppercase().min(1).max(50);
 
 const locationSchema = Joi.object({
@@ -16,6 +15,43 @@ const locationSchema = Joi.object({
   longitude: Joi.number().allow(null),
   address: Joi.string().trim().allow("", null),
 });
+
+/**
+ * Frontend-safe aliases.
+ * This prevents errors when frontend accidentally sends:
+ * employeecode / employee_code / shiftcode / attendancepolicycode
+ */
+const withAttendanceAliases = (schema) => {
+  return schema
+    .rename("employeecode", "employeeCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("employee_code", "employeeCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("shiftcode", "shiftCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("shift_code", "shiftCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("attendancepolicycode", "attendancePolicyCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("attendance_policy_code", "attendancePolicyCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("policy_code", "policyCode", {
+      ignoreUndefined: true,
+      override: true,
+    });
+};
 
 /* ---------------- Shift ---------------- */
 
@@ -117,82 +153,81 @@ export const updateAttendancePolicySchema = createAttendancePolicySchema.fork(
 
 /* ---------------- Attendance ---------------- */
 
-export const checkInSchema = Joi.object({
-  employeeId: objectId.allow("", null),
-  employeeCode: code.allow("", null),
+export const checkInSchema = withAttendanceAliases(
+  Joi.object({
+    employeeCode: code.required(),
 
-  attendanceDate: Joi.date().default(() => new Date()),
+    attendanceDate: Joi.date().default(() => new Date()),
 
-  shiftId: objectId.allow("", null),
-  shiftCode: code.allow("", null),
+    shiftCode: code.allow("", null),
 
-  attendancePolicyId: objectId.allow("", null),
-  attendancePolicyCode: code.allow("", null),
-  policyCode: code.allow("", null),
+    attendancePolicyCode: code.allow("", null),
+    policyCode: code.allow("", null),
 
-  checkInTime: Joi.date().default(() => new Date()),
+    checkInTime: Joi.date().default(() => new Date()),
 
-  checkInSource: Joi.string()
-    .valid(...Object.values(CHECKIN_SOURCE))
-    .default(CHECKIN_SOURCE.WEB),
+    checkInSource: Joi.string()
+      .valid(...Object.values(CHECKIN_SOURCE))
+      .default(CHECKIN_SOURCE.WEB),
 
-  checkInLocation: locationSchema.default({}),
+    checkInLocation: locationSchema.default({}),
 
-  checkInSelfie: Joi.string().trim().allow("", null),
+    checkInSelfie: Joi.string().trim().allow("", null),
 
-  remarks: Joi.string().trim().allow("", null),
-}).or("employeeId", "employeeCode");
+    remarks: Joi.string().trim().allow("", null),
+  })
+);
 
-export const checkOutSchema = Joi.object({
-  employeeId: objectId.allow("", null),
-  employeeCode: code.allow("", null),
+export const checkOutSchema = withAttendanceAliases(
+  Joi.object({
+    employeeCode: code.required(),
 
-  attendanceDate: Joi.date().default(() => new Date()),
+    attendanceDate: Joi.date().default(() => new Date()),
 
-  checkOutTime: Joi.date().default(() => new Date()),
+    checkOutTime: Joi.date().default(() => new Date()),
 
-  checkOutSource: Joi.string()
-    .valid(...Object.values(CHECKIN_SOURCE))
-    .default(CHECKIN_SOURCE.WEB),
+    checkOutSource: Joi.string()
+      .valid(...Object.values(CHECKIN_SOURCE))
+      .default(CHECKIN_SOURCE.WEB),
 
-  checkOutLocation: locationSchema.default({}),
+    checkOutLocation: locationSchema.default({}),
 
-  checkOutSelfie: Joi.string().trim().allow("", null),
+    checkOutSelfie: Joi.string().trim().allow("", null),
 
-  remarks: Joi.string().trim().allow("", null),
-}).or("employeeId", "employeeCode");
+    remarks: Joi.string().trim().allow("", null),
+  })
+);
 
-export const manualAttendanceSchema = Joi.object({
-  employeeId: objectId.allow("", null),
-  employeeCode: code.allow("", null),
+export const manualAttendanceSchema = withAttendanceAliases(
+  Joi.object({
+    employeeCode: code.required(),
 
-  attendanceDate: Joi.date().required(),
+    attendanceDate: Joi.date().required(),
 
-  shiftId: objectId.allow("", null),
-  shiftCode: code.allow("", null),
+    shiftCode: code.allow("", null),
 
-  attendancePolicyId: objectId.allow("", null),
-  attendancePolicyCode: code.allow("", null),
-  policyCode: code.allow("", null),
+    attendancePolicyCode: code.allow("", null),
+    policyCode: code.allow("", null),
 
-  checkInTime: Joi.date().allow(null),
+    checkInTime: Joi.date().allow(null),
 
-  checkOutTime: Joi.date().allow(null),
+    checkOutTime: Joi.date().allow(null),
 
-  totalWorkMinutes: Joi.number().integer().min(0).default(0),
+    totalWorkMinutes: Joi.number().integer().min(0).default(0),
 
-  breakMinutes: Joi.number().integer().min(0).default(0),
+    breakMinutes: Joi.number().integer().min(0).default(0),
 
-  overtimeMinutes: Joi.number().integer().min(0).default(0),
+    overtimeMinutes: Joi.number().integer().min(0).default(0),
 
-  lateByMinutes: Joi.number().integer().min(0).default(0),
+    lateByMinutes: Joi.number().integer().min(0).default(0),
 
-  earlyCheckoutMinutes: Joi.number().integer().min(0).default(0),
+    earlyCheckoutMinutes: Joi.number().integer().min(0).default(0),
 
-  status: Joi.string().valid(...Object.values(ATTENDANCE_STATUS)).required(),
+    status: Joi.string().valid(...Object.values(ATTENDANCE_STATUS)).required(),
 
-  remarks: Joi.string().trim().allow("", null),
-}).or("employeeId", "employeeCode");
+    remarks: Joi.string().trim().allow("", null),
+  })
+);
 
 export const updateAttendanceStatusSchema = Joi.object({
   status: Joi.string().valid(...Object.values(ATTENDANCE_STATUS)).required(),
@@ -202,23 +237,23 @@ export const updateAttendanceStatusSchema = Joi.object({
 
 /* ---------------- Regularization ---------------- */
 
-export const createRegularizationSchema = Joi.object({
-  attendanceId: objectId.allow("", null),
+export const createRegularizationSchema = withAttendanceAliases(
+  Joi.object({
+    employeeCode: code.required(),
 
-  employeeId: objectId.allow("", null),
-  employeeCode: code.allow("", null),
-  attendanceDate: Joi.date().allow(null),
+    attendanceDate: Joi.date().required(),
 
-  requestedCheckIn: Joi.date().allow(null),
+    requestedCheckIn: Joi.date().allow(null),
 
-  requestedCheckOut: Joi.date().allow(null),
+    requestedCheckOut: Joi.date().allow(null),
 
-  reason: Joi.string().trim().min(2).max(1000).required(),
+    reason: Joi.string().trim().min(2).max(1000).required(),
 
-  attachment: Joi.string().trim().allow("", null),
+    attachment: Joi.string().trim().allow("", null),
 
-  employeeRemarks: Joi.string().trim().allow("", null),
-}).or("attendanceId", "employeeCode", "employeeId");
+    employeeRemarks: Joi.string().trim().allow("", null),
+  })
+);
 
 export const updateRegularizationStatusSchema = Joi.object({
   status: Joi.string()
