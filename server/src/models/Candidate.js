@@ -267,7 +267,7 @@ const candidateSchema = new mongoose.Schema(
   }
 );
 
-candidateSchema.pre("validate", function () {
+candidateSchema.pre("validate", async function () {
   this.fullName = [
     this.firstName,
     this.middleName,

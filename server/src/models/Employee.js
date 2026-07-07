@@ -321,7 +321,7 @@ const employeeSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-employeeSchema.pre("validate", function () {
+employeeSchema.pre("validate", async function () {
   if (!this.displayName) {
     this.displayName = [this.firstName, this.middleName, this.lastName]
       .filter(Boolean)

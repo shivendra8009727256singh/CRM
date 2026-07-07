@@ -176,7 +176,7 @@ const userSchema = new mongoose.Schema(
  * Do not call next() here unless next is declared.
  * This hook is synchronous, so use this.invalidate() instead.
  */
-userSchema.pre("validate", function () {
+userSchema.pre("validate", async function () {
   if (this.role === ROLES.SUPER_ADMIN) {
     this.companyId = null;
     this.isPlatformUser = true;
@@ -190,7 +190,7 @@ userSchema.pre("validate", function () {
   }
 });
 
-userSchema.pre("save", function () {
+userSchema.pre("save", async function () {
   if (!this.permissions || this.permissions.length === 0) {
     this.permissions = ROLE_PERMISSIONS[this.role] || [];
   }
