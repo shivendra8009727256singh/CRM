@@ -10,8 +10,8 @@ const isSmtpConfigured = Boolean(
 const transporter = isSmtpConfigured
   ? nodemailer.createTransport({
       host: env.SMTP_HOST,
-      port: Number(env.SMTP_PORT || 465),
-      secure: Number(env.SMTP_PORT || 465) === 465,
+      port: Number(env.SMTP_PORT || 587),
+      secure: Number(env.SMTP_PORT || 587) === 465,
       auth: {
         user: env.SMTP_USER,
         pass: env.SMTP_PASS,
