@@ -9,133 +9,181 @@ import { SALARY_STATUS } from "../models/EmployeeSalary.js";
 import { PAYROLL_STATUS } from "../models/PayrollRun.js";
 import { PAYSLIP_STATUS } from "../models/Payslip.js";
 
-const objectId = Joi.string().hex().length(24);
 const code = Joi.string().trim().uppercase().min(1).max(50);
+const optionalCode = code.allow("", null);
 
-const salaryComponentValueSchema = Joi.object({
-  componentId: objectId.allow("", null),
-  componentCode: code.allow("", null),
+const withPayrollAliases = (schema) => {
+  return schema
+    .rename("componentcode", "componentCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("component_code", "componentCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("employeecode", "employeeCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("employee_code", "employeeCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("salarystructurecode", "salaryStructureCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("salary_structure_code", "salaryStructureCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("structurecode", "structureCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("structure_code", "structureCode", {
+      ignoreUndefined: true,
+      override: true,
+    });
+};
 
-  componentName: Joi.string().trim().allow("", null),
+const salaryComponentValueSchema = withPayrollAliases(
+  Joi.object({
+    componentCode: code.required(),
 
-  type: Joi.string()
-    .valid(...Object.values(COMPONENT_TYPE))
-    .required(),
+    componentName: Joi.string().trim().allow("", null),
 
-  amount: Joi.number().min(0).default(0),
-}).or("componentId", "componentCode");
+    type: Joi.string()
+      .valid(...Object.values(COMPONENT_TYPE))
+      .required(),
+
+    amount: Joi.number().min(0).default(0),
+  })
+);
 
 /* ================= SALARY COMPONENT ================= */
 
-export const createSalaryComponentSchema = Joi.object({
-  componentName: Joi.string().trim().max(120).required(),
+export const createSalaryComponentSchema = withPayrollAliases(
+  Joi.object({
+    componentName: Joi.string().trim().max(120).required(),
 
-  componentCode: code.max(30).required(),
+    componentCode: code.max(30).required(),
 
-  type: Joi.string()
-    .valid(...Object.values(COMPONENT_TYPE))
-    .required(),
+    type: Joi.string()
+      .valid(...Object.values(COMPONENT_TYPE))
+      .required(),
 
-  calculationType: Joi.string()
-    .valid(...Object.values(CALCULATION_TYPE))
-    .default(CALCULATION_TYPE.FIXED),
+    calculationType: Joi.string()
+      .valid(...Object.values(CALCULATION_TYPE))
+      .default(CALCULATION_TYPE.FIXED),
 
-  value: Joi.number().min(0).default(0),
+    value: Joi.number().min(0).default(0),
 
-  taxable: Joi.boolean().default(true),
+    taxable: Joi.boolean().default(true),
 
-  affectsPF: Joi.boolean().default(false),
+    affectsPF: Joi.boolean().default(false),
 
-  affectsESI: Joi.boolean().default(false),
+    affectsESI: Joi.boolean().default(false),
 
-  affectsGratuity: Joi.boolean().default(false),
+    affectsGratuity: Joi.boolean().default(false),
 
-  isDefault: Joi.boolean().default(false),
+    isDefault: Joi.boolean().default(false),
 
-  isActive: Joi.boolean().default(true),
-});
+    isActive: Joi.boolean().default(true),
+  })
+);
 
-export const updateSalaryComponentSchema = createSalaryComponentSchema.fork(
-  ["componentName", "componentCode", "type"],
-  (schema) => schema.optional()
+export const updateSalaryComponentSchema = withPayrollAliases(
+  createSalaryComponentSchema.fork(
+    ["componentName", "componentCode", "type"],
+    (schema) => schema.optional()
+  )
 );
 
 /* ================= SALARY STRUCTURE ================= */
 
-const structureComponentSchema = Joi.object({
-  componentId: objectId.allow("", null),
-  componentCode: code.allow("", null),
+const structureComponentSchema = withPayrollAliases(
+  Joi.object({
+    componentCode: code.required(),
 
-  amount: Joi.number().min(0).default(0),
+    amount: Joi.number().min(0).default(0),
 
-  percentageOfCTC: Joi.number().min(0).default(0),
+    percentageOfCTC: Joi.number().min(0).default(0),
 
-  enabled: Joi.boolean().default(true),
-}).or("componentId", "componentCode");
+    enabled: Joi.boolean().default(true),
+  })
+);
 
-export const createSalaryStructureSchema = Joi.object({
-  structureName: Joi.string().trim().max(120).required(),
+export const createSalaryStructureSchema = withPayrollAliases(
+  Joi.object({
+    structureName: Joi.string().trim().max(120).required(),
 
-  structureCode: code.max(30).required(),
+    structureCode: code.max(30).required(),
 
-  description: Joi.string().trim().allow("", null),
+    description: Joi.string().trim().allow("", null),
 
-  annualCTC: Joi.number().min(0).default(0),
+    annualCTC: Joi.number().min(0).default(0),
 
-  monthlyCTC: Joi.number().min(0).default(0),
+    monthlyCTC: Joi.number().min(0).default(0),
 
-  earnings: Joi.array().items(structureComponentSchema).default([]),
+    earnings: Joi.array().items(structureComponentSchema).default([]),
 
-  deductions: Joi.array().items(structureComponentSchema).default([]),
+    deductions: Joi.array().items(structureComponentSchema).default([]),
 
-  isDefault: Joi.boolean().default(false),
+    isDefault: Joi.boolean().default(false),
 
-  isActive: Joi.boolean().default(true),
-});
+    isActive: Joi.boolean().default(true),
+  })
+);
 
-export const updateSalaryStructureSchema = createSalaryStructureSchema.fork(
-  ["structureName", "structureCode"],
-  (schema) => schema.optional()
+export const updateSalaryStructureSchema = withPayrollAliases(
+  createSalaryStructureSchema.fork(
+    ["structureName", "structureCode"],
+    (schema) => schema.optional()
+  )
 );
 
 /* ================= EMPLOYEE SALARY ================= */
 
-export const assignEmployeeSalarySchema = Joi.object({
-  employeeId: objectId.allow("", null),
-  employeeCode: code.allow("", null),
+export const assignEmployeeSalarySchema = withPayrollAliases(
+  Joi.object({
+    employeeCode: code.required(),
 
-  salaryStructureId: objectId.allow("", null),
-  salaryStructureCode: code.allow("", null),
-  structureCode: code.allow("", null),
+    salaryStructureCode: optionalCode,
+    structureCode: optionalCode,
 
-  annualCTC: Joi.number().min(0).default(0),
+    annualCTC: Joi.number().min(0).default(0),
 
-  monthlyCTC: Joi.number().min(0).default(0),
+    monthlyCTC: Joi.number().min(0).default(0),
 
-  earnings: Joi.array().items(salaryComponentValueSchema).default([]),
+    earnings: Joi.array().items(salaryComponentValueSchema).default([]),
 
-  deductions: Joi.array().items(salaryComponentValueSchema).default([]),
+    deductions: Joi.array().items(salaryComponentValueSchema).default([]),
 
-  grossSalary: Joi.number().min(0).default(0),
+    grossSalary: Joi.number().min(0).default(0),
 
-  totalDeductions: Joi.number().min(0).default(0),
+    totalDeductions: Joi.number().min(0).default(0),
 
-  netSalary: Joi.number().min(0).default(0),
+    netSalary: Joi.number().min(0).default(0),
 
-  effectiveFrom: Joi.date().required(),
+    effectiveFrom: Joi.date().required(),
 
-  effectiveTo: Joi.date().allow(null),
+    effectiveTo: Joi.date().allow(null),
 
-  status: Joi.string()
-    .valid(...Object.values(SALARY_STATUS))
-    .default(SALARY_STATUS.ACTIVE),
+    status: Joi.string()
+      .valid(...Object.values(SALARY_STATUS))
+      .default(SALARY_STATUS.ACTIVE),
 
-  remarks: Joi.string().trim().allow("", null),
-}).or("employeeId", "employeeCode");
+    remarks: Joi.string().trim().allow("", null),
+  })
+);
 
-export const updateEmployeeSalarySchema = assignEmployeeSalarySchema.fork(
-  ["employeeId", "employeeCode", "effectiveFrom"],
-  (schema) => schema.optional()
+export const updateEmployeeSalarySchema = withPayrollAliases(
+  assignEmployeeSalarySchema.fork(
+    ["employeeCode", "effectiveFrom"],
+    (schema) => schema.optional()
+  )
 );
 
 /* ================= PAYROLL RUN ================= */
