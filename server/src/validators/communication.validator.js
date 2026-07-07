@@ -36,45 +36,46 @@ const withCommunicationAliases = (schema) => {
     });
 };
 
-export const sendMessageSchema = withCommunicationAliases(
-  Joi.object({
-    recipientEmail: Joi.string().email().lowercase().trim().allow("", null),
+const messageBaseSchema = Joi.object({
+  recipientEmail: Joi.string().email().lowercase().trim().allow("", null),
 
-    recipientEmployeeCode: optionalCode,
-    employeeCode: optionalCode,
+  recipientEmployeeCode: optionalCode,
+  employeeCode: optionalCode,
 
-    subject: Joi.string().trim().max(200).allow("", null),
+  subject: Joi.string().trim().max(200).allow("", null),
 
-    body: Joi.string().trim().max(5000).required(),
+  body: Joi.string().trim().max(5000).required(),
 
-    attachmentUrl: Joi.string().trim().allow("", null),
-  }).or("recipientEmail", "recipientEmployeeCode", "employeeCode")
-);
+  attachmentUrl: Joi.string().trim().allow("", null),
+}).or("recipientEmail", "recipientEmployeeCode", "employeeCode");
 
-export const sendNotificationSchema = withCommunicationAliases(
-  Joi.object({
-    recipientEmail: Joi.string().email().lowercase().trim().allow("", null),
+export const sendMessageSchema = withCommunicationAliases(messageBaseSchema);
 
-    recipientEmployeeCode: optionalCode,
-    employeeCode: optionalCode,
+const notificationBaseSchema = Joi.object({
+  recipientEmail: Joi.string().email().lowercase().trim().allow("", null),
 
-    type: Joi.string()
-      .valid(...Object.values(NOTIFICATION_TYPE))
-      .default(NOTIFICATION_TYPE.SYSTEM),
+  recipientEmployeeCode: optionalCode,
+  employeeCode: optionalCode,
 
-    title: Joi.string().trim().max(200).required(),
+  type: Joi.string()
+    .valid(...Object.values(NOTIFICATION_TYPE))
+    .default(NOTIFICATION_TYPE.SYSTEM),
 
-    message: Joi.string().trim().max(2000).required(),
+  title: Joi.string().trim().max(200).required(),
 
-    priority: Joi.string()
-      .valid(...Object.values(NOTIFICATION_PRIORITY))
-      .default(NOTIFICATION_PRIORITY.NORMAL),
+  message: Joi.string().trim().max(2000).required(),
 
-    entityType: Joi.string().trim().allow("", null),
+  priority: Joi.string()
+    .valid(...Object.values(NOTIFICATION_PRIORITY))
+    .default(NOTIFICATION_PRIORITY.NORMAL),
 
-    actionUrl: Joi.string().trim().allow("", null),
-  }).or("recipientEmail", "recipientEmployeeCode", "employeeCode")
-);
+  entityType: Joi.string().trim().allow("", null),
+
+  actionUrl: Joi.string().trim().allow("", null),
+}).or("recipientEmail", "recipientEmployeeCode", "employeeCode");
+
+export const sendNotificationSchema =
+  withCommunicationAliases(notificationBaseSchema);
 
 export const markNotificationReadSchema = Joi.object({
   isRead: Joi.boolean().default(true),

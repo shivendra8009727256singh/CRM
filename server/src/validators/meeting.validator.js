@@ -5,17 +5,62 @@ import {
   MEETING_STATUS,
 } from "../models/HRMeeting.js";
 
-const objectId = Joi.string().hex().length(24);
 const code = Joi.string().trim().uppercase().min(1).max(50);
+const optionalCode = code.allow("", null);
 
-const attendeeSchema = Joi.object({
-  employeeId: objectId.allow("", null),
-  employeeCode: code.allow("", null),
+const withMeetingAliases = (schema) => {
+  return schema
+    .rename("meetingcode", "meetingCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("meeting_code", "meetingCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("employeecode", "employeeCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("employee_code", "employeeCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("organizercode", "organizerCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("organizer_code", "organizerCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("organizeremployeecode", "organizerEmployeeCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("organizer_employee_code", "organizerEmployeeCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("assignedtoemployeecode", "assignedToEmployeeCode", {
+      ignoreUndefined: true,
+      override: true,
+    })
+    .rename("assigned_to_employee_code", "assignedToEmployeeCode", {
+      ignoreUndefined: true,
+      override: true,
+    });
+};
+
+const attendeeBaseSchema = Joi.object({
+  employeeCode: code.required(),
 
   status: Joi.string()
     .valid("invited", "accepted", "declined", "attended", "absent")
     .default("invited"),
-}).or("employeeId", "employeeCode");
+});
+
+const attendeeSchema = withMeetingAliases(attendeeBaseSchema);
 
 const agendaItemSchema = Joi.object({
   title: Joi.string().trim().allow("", null),
@@ -23,12 +68,11 @@ const agendaItemSchema = Joi.object({
   description: Joi.string().trim().allow("", null),
 });
 
-const actionItemSchema = Joi.object({
+const actionItemBaseSchema = Joi.object({
   title: Joi.string().trim().required(),
 
-  assignedTo: objectId.allow("", null),
-  assignedToEmployeeCode: code.allow("", null),
-  employeeCode: code.allow("", null),
+  assignedToEmployeeCode: optionalCode,
+  employeeCode: optionalCode,
 
   dueDate: Joi.date().allow(null),
 
@@ -37,7 +81,9 @@ const actionItemSchema = Joi.object({
     .default("pending"),
 });
 
-export const createMeetingSchema = Joi.object({
+const actionItemSchema = withMeetingAliases(actionItemBaseSchema);
+
+const meetingBaseSchema = Joi.object({
   meetingTitle: Joi.string().trim().max(200).required(),
 
   meetingCode: Joi.string().trim().uppercase().max(30).required(),
@@ -54,9 +100,8 @@ export const createMeetingSchema = Joi.object({
 
   endDateTime: Joi.date().required(),
 
-  organizerId: objectId.allow("", null),
-  organizerCode: code.allow("", null),
-  organizerEmployeeCode: code.allow("", null),
+  organizerCode: optionalCode,
+  organizerEmployeeCode: optionalCode,
 
   attendees: Joi.array().items(attendeeSchema).default([]),
 
@@ -75,9 +120,13 @@ export const createMeetingSchema = Joi.object({
   remarks: Joi.string().trim().allow("", null),
 });
 
-export const updateMeetingSchema = createMeetingSchema.fork(
-  ["meetingTitle", "meetingCode", "startDateTime", "endDateTime"],
-  (schema) => schema.optional()
+export const createMeetingSchema = withMeetingAliases(meetingBaseSchema);
+
+export const updateMeetingSchema = withMeetingAliases(
+  meetingBaseSchema.fork(
+    ["meetingTitle", "meetingCode", "startDateTime", "endDateTime"],
+    (schema) => schema.optional()
+  )
 );
 
 export const updateMeetingStatusSchema = Joi.object({

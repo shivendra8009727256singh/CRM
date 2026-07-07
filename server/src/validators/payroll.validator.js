@@ -48,54 +48,60 @@ const withPayrollAliases = (schema) => {
     });
 };
 
+/* ================= COMMON COMPONENT VALUE ================= */
+
+const salaryComponentValueBaseSchema = Joi.object({
+  componentCode: code.required(),
+
+  componentName: Joi.string().trim().allow("", null),
+
+  type: Joi.string()
+    .valid(...Object.values(COMPONENT_TYPE))
+    .required(),
+
+  amount: Joi.number().min(0).default(0),
+});
+
 const salaryComponentValueSchema = withPayrollAliases(
-  Joi.object({
-    componentCode: code.required(),
-
-    componentName: Joi.string().trim().allow("", null),
-
-    type: Joi.string()
-      .valid(...Object.values(COMPONENT_TYPE))
-      .required(),
-
-    amount: Joi.number().min(0).default(0),
-  })
+  salaryComponentValueBaseSchema
 );
 
 /* ================= SALARY COMPONENT ================= */
 
+const salaryComponentBaseSchema = Joi.object({
+  componentName: Joi.string().trim().max(120).required(),
+
+  componentCode: code.max(30).required(),
+
+  type: Joi.string()
+    .valid(...Object.values(COMPONENT_TYPE))
+    .required(),
+
+  calculationType: Joi.string()
+    .valid(...Object.values(CALCULATION_TYPE))
+    .default(CALCULATION_TYPE.FIXED),
+
+  value: Joi.number().min(0).default(0),
+
+  taxable: Joi.boolean().default(true),
+
+  affectsPF: Joi.boolean().default(false),
+
+  affectsESI: Joi.boolean().default(false),
+
+  affectsGratuity: Joi.boolean().default(false),
+
+  isDefault: Joi.boolean().default(false),
+
+  isActive: Joi.boolean().default(true),
+});
+
 export const createSalaryComponentSchema = withPayrollAliases(
-  Joi.object({
-    componentName: Joi.string().trim().max(120).required(),
-
-    componentCode: code.max(30).required(),
-
-    type: Joi.string()
-      .valid(...Object.values(COMPONENT_TYPE))
-      .required(),
-
-    calculationType: Joi.string()
-      .valid(...Object.values(CALCULATION_TYPE))
-      .default(CALCULATION_TYPE.FIXED),
-
-    value: Joi.number().min(0).default(0),
-
-    taxable: Joi.boolean().default(true),
-
-    affectsPF: Joi.boolean().default(false),
-
-    affectsESI: Joi.boolean().default(false),
-
-    affectsGratuity: Joi.boolean().default(false),
-
-    isDefault: Joi.boolean().default(false),
-
-    isActive: Joi.boolean().default(true),
-  })
+  salaryComponentBaseSchema
 );
 
 export const updateSalaryComponentSchema = withPayrollAliases(
-  createSalaryComponentSchema.fork(
+  salaryComponentBaseSchema.fork(
     ["componentName", "componentCode", "type"],
     (schema) => schema.optional()
   )
@@ -103,42 +109,46 @@ export const updateSalaryComponentSchema = withPayrollAliases(
 
 /* ================= SALARY STRUCTURE ================= */
 
+const structureComponentBaseSchema = Joi.object({
+  componentCode: code.required(),
+
+  amount: Joi.number().min(0).default(0),
+
+  percentageOfCTC: Joi.number().min(0).default(0),
+
+  enabled: Joi.boolean().default(true),
+});
+
 const structureComponentSchema = withPayrollAliases(
-  Joi.object({
-    componentCode: code.required(),
-
-    amount: Joi.number().min(0).default(0),
-
-    percentageOfCTC: Joi.number().min(0).default(0),
-
-    enabled: Joi.boolean().default(true),
-  })
+  structureComponentBaseSchema
 );
 
+const salaryStructureBaseSchema = Joi.object({
+  structureName: Joi.string().trim().max(120).required(),
+
+  structureCode: code.max(30).required(),
+
+  description: Joi.string().trim().allow("", null),
+
+  annualCTC: Joi.number().min(0).default(0),
+
+  monthlyCTC: Joi.number().min(0).default(0),
+
+  earnings: Joi.array().items(structureComponentSchema).default([]),
+
+  deductions: Joi.array().items(structureComponentSchema).default([]),
+
+  isDefault: Joi.boolean().default(false),
+
+  isActive: Joi.boolean().default(true),
+});
+
 export const createSalaryStructureSchema = withPayrollAliases(
-  Joi.object({
-    structureName: Joi.string().trim().max(120).required(),
-
-    structureCode: code.max(30).required(),
-
-    description: Joi.string().trim().allow("", null),
-
-    annualCTC: Joi.number().min(0).default(0),
-
-    monthlyCTC: Joi.number().min(0).default(0),
-
-    earnings: Joi.array().items(structureComponentSchema).default([]),
-
-    deductions: Joi.array().items(structureComponentSchema).default([]),
-
-    isDefault: Joi.boolean().default(false),
-
-    isActive: Joi.boolean().default(true),
-  })
+  salaryStructureBaseSchema
 );
 
 export const updateSalaryStructureSchema = withPayrollAliases(
-  createSalaryStructureSchema.fork(
+  salaryStructureBaseSchema.fork(
     ["structureName", "structureCode"],
     (schema) => schema.optional()
   )
@@ -146,44 +156,72 @@ export const updateSalaryStructureSchema = withPayrollAliases(
 
 /* ================= EMPLOYEE SALARY ================= */
 
+const assignEmployeeSalaryBaseSchema = Joi.object({
+  employeeCode: code.required(),
+
+  salaryStructureCode: optionalCode,
+  structureCode: optionalCode,
+
+  annualCTC: Joi.number().min(0).default(0),
+
+  monthlyCTC: Joi.number().min(0).default(0),
+
+  earnings: Joi.array().items(salaryComponentValueSchema).default([]),
+
+  deductions: Joi.array().items(salaryComponentValueSchema).default([]),
+
+  grossSalary: Joi.number().min(0).default(0),
+
+  totalDeductions: Joi.number().min(0).default(0),
+
+  netSalary: Joi.number().min(0).default(0),
+
+  effectiveFrom: Joi.date().required(),
+
+  effectiveTo: Joi.date().allow(null),
+
+  status: Joi.string()
+    .valid(...Object.values(SALARY_STATUS))
+    .default(SALARY_STATUS.ACTIVE),
+
+  remarks: Joi.string().trim().allow("", null),
+});
+
+const updateEmployeeSalaryBaseSchema = Joi.object({
+  employeeCode: optionalCode,
+
+  salaryStructureCode: optionalCode,
+  structureCode: optionalCode,
+
+  annualCTC: Joi.number().min(0),
+
+  monthlyCTC: Joi.number().min(0),
+
+  earnings: Joi.array().items(salaryComponentValueSchema),
+
+  deductions: Joi.array().items(salaryComponentValueSchema),
+
+  grossSalary: Joi.number().min(0),
+
+  totalDeductions: Joi.number().min(0),
+
+  netSalary: Joi.number().min(0),
+
+  effectiveFrom: Joi.date(),
+
+  effectiveTo: Joi.date().allow(null),
+
+  status: Joi.string().valid(...Object.values(SALARY_STATUS)),
+
+  remarks: Joi.string().trim().allow("", null),
+});
+
 export const assignEmployeeSalarySchema = withPayrollAliases(
-  Joi.object({
-    employeeCode: code.required(),
-
-    salaryStructureCode: optionalCode,
-    structureCode: optionalCode,
-
-    annualCTC: Joi.number().min(0).default(0),
-
-    monthlyCTC: Joi.number().min(0).default(0),
-
-    earnings: Joi.array().items(salaryComponentValueSchema).default([]),
-
-    deductions: Joi.array().items(salaryComponentValueSchema).default([]),
-
-    grossSalary: Joi.number().min(0).default(0),
-
-    totalDeductions: Joi.number().min(0).default(0),
-
-    netSalary: Joi.number().min(0).default(0),
-
-    effectiveFrom: Joi.date().required(),
-
-    effectiveTo: Joi.date().allow(null),
-
-    status: Joi.string()
-      .valid(...Object.values(SALARY_STATUS))
-      .default(SALARY_STATUS.ACTIVE),
-
-    remarks: Joi.string().trim().allow("", null),
-  })
+  assignEmployeeSalaryBaseSchema
 );
 
 export const updateEmployeeSalarySchema = withPayrollAliases(
-  assignEmployeeSalarySchema.fork(
-    ["employeeCode", "effectiveFrom"],
-    (schema) => schema.optional()
-  )
+  updateEmployeeSalaryBaseSchema
 );
 
 /* ================= PAYROLL RUN ================= */

@@ -39,7 +39,9 @@ const withCompanySettingsAliases = (schema) => {
     });
 };
 
-export const createBranchSchema = Joi.object({
+/* ================= BRANCH ================= */
+
+const branchBaseSchema = Joi.object({
   branchName: Joi.string().trim().min(2).max(120).required(),
 
   branchCode: Joi.string().trim().uppercase().min(2).max(30).required(),
@@ -53,71 +55,82 @@ export const createBranchSchema = Joi.object({
   isHeadOffice: Joi.boolean().default(false),
 });
 
-export const updateBranchSchema = createBranchSchema.fork(
+export const createBranchSchema = branchBaseSchema;
+
+export const updateBranchSchema = branchBaseSchema.fork(
   ["branchName", "branchCode"],
   (schema) => schema.optional()
 );
 
-export const createDepartmentSchema = withCompanySettingsAliases(
-  Joi.object({
-    branchCode: code,
+/* ================= DEPARTMENT ================= */
 
-    departmentName: Joi.string().trim().min(2).max(120).required(),
+const departmentBaseSchema = Joi.object({
+  branchCode: code,
 
-    departmentCode: Joi.string().trim().uppercase().min(2).max(30).required(),
+  departmentName: Joi.string().trim().min(2).max(120).required(),
 
-    description: Joi.string().allow("", null),
-  })
-);
+  departmentCode: Joi.string().trim().uppercase().min(2).max(30).required(),
+
+  description: Joi.string().allow("", null),
+});
+
+export const createDepartmentSchema =
+  withCompanySettingsAliases(departmentBaseSchema);
 
 export const updateDepartmentSchema = withCompanySettingsAliases(
-  createDepartmentSchema.fork(
+  departmentBaseSchema.fork(
     ["departmentName", "departmentCode"],
     (schema) => schema.optional()
   )
 );
 
-export const createDesignationSchema = withCompanySettingsAliases(
-  Joi.object({
-    departmentCode: code,
+/* ================= DESIGNATION ================= */
 
-    designationName: Joi.string().trim().min(2).max(120).required(),
+const designationBaseSchema = Joi.object({
+  departmentCode: code,
 
-    designationCode: Joi.string().trim().uppercase().min(2).max(30).required(),
+  designationName: Joi.string().trim().min(2).max(120).required(),
 
-    level: Joi.number().integer().min(1).max(100).default(1),
+  designationCode: Joi.string().trim().uppercase().min(2).max(30).required(),
 
-    description: Joi.string().allow("", null),
-  })
-);
+  level: Joi.number().integer().min(1).max(100).default(1),
+
+  description: Joi.string().allow("", null),
+});
+
+export const createDesignationSchema =
+  withCompanySettingsAliases(designationBaseSchema);
 
 export const updateDesignationSchema = withCompanySettingsAliases(
-  createDesignationSchema.fork(
+  designationBaseSchema.fork(
     ["designationName", "designationCode"],
     (schema) => schema.optional()
   )
 );
 
-export const createHolidaySchema = withCompanySettingsAliases(
-  Joi.object({
-    branchCode: code,
+/* ================= HOLIDAY ================= */
 
-    holidayName: Joi.string().trim().min(2).max(120).required(),
+const holidayBaseSchema = Joi.object({
+  branchCode: code,
 
-    date: Joi.date().required(),
+  holidayName: Joi.string().trim().min(2).max(120).required(),
 
-    type: Joi.string()
-      .valid("public", "company", "festival", "optional")
-      .default("company"),
+  date: Joi.date().required(),
 
-    description: Joi.string().allow("", null),
+  type: Joi.string()
+    .valid("public", "company", "festival", "optional")
+    .default("company"),
 
-    isPaid: Joi.boolean().default(true),
-  })
-);
+  description: Joi.string().allow("", null),
+
+  isPaid: Joi.boolean().default(true),
+});
+
+export const createHolidaySchema =
+  withCompanySettingsAliases(holidayBaseSchema);
 
 export const updateHolidaySchema = withCompanySettingsAliases(
-  createHolidaySchema.fork(["holidayName", "date"], (schema) =>
+  holidayBaseSchema.fork(["holidayName", "date"], (schema) =>
     schema.optional()
   )
 );

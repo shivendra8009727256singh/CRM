@@ -27,52 +27,52 @@ const withEventAliases = (schema) => {
     });
 };
 
-const participantSchema = withEventAliases(
-  Joi.object({
-    employeeCode: code.required(),
+const participantBaseSchema = Joi.object({
+  employeeCode: code.required(),
 
-    status: Joi.string()
-      .valid("invited", "accepted", "declined", "attended")
-      .default("invited"),
-  })
-);
+  status: Joi.string()
+    .valid("invited", "accepted", "declined", "attended")
+    .default("invited"),
+});
 
-export const createEventSchema = withEventAliases(
-  Joi.object({
-    eventTitle: Joi.string().trim().max(200).required(),
+const participantSchema = withEventAliases(participantBaseSchema);
 
-    eventCode: Joi.string().trim().uppercase().max(30).required(),
+const eventBaseSchema = Joi.object({
+  eventTitle: Joi.string().trim().max(200).required(),
 
-    eventType: Joi.string()
-      .valid(...Object.values(EVENT_TYPE))
-      .default(EVENT_TYPE.COMPANY_EVENT),
+  eventCode: Joi.string().trim().uppercase().max(30).required(),
 
-    description: Joi.string().trim().allow("", null),
+  eventType: Joi.string()
+    .valid(...Object.values(EVENT_TYPE))
+    .default(EVENT_TYPE.COMPANY_EVENT),
 
-    venue: Joi.string().trim().allow("", null),
+  description: Joi.string().trim().allow("", null),
 
-    meetingLink: Joi.string().trim().allow("", null),
+  venue: Joi.string().trim().allow("", null),
 
-    bannerImage: Joi.string().trim().allow("", null),
+  meetingLink: Joi.string().trim().allow("", null),
 
-    startDateTime: Joi.date().required(),
+  bannerImage: Joi.string().trim().allow("", null),
 
-    endDateTime: Joi.date().required(),
+  startDateTime: Joi.date().required(),
 
-    allDay: Joi.boolean().default(false),
+  endDateTime: Joi.date().required(),
 
-    participants: Joi.array().items(participantSchema).default([]),
+  allDay: Joi.boolean().default(false),
 
-    notifyEmployees: Joi.boolean().default(true),
+  participants: Joi.array().items(participantSchema).default([]),
 
-    status: Joi.string()
-      .valid(...Object.values(EVENT_STATUS))
-      .default(EVENT_STATUS.DRAFT),
-  })
-);
+  notifyEmployees: Joi.boolean().default(true),
+
+  status: Joi.string()
+    .valid(...Object.values(EVENT_STATUS))
+    .default(EVENT_STATUS.DRAFT),
+});
+
+export const createEventSchema = withEventAliases(eventBaseSchema);
 
 export const updateEventSchema = withEventAliases(
-  createEventSchema.fork(
+  eventBaseSchema.fork(
     ["eventTitle", "eventCode", "startDateTime", "endDateTime"],
     (schema) => schema.optional()
   )

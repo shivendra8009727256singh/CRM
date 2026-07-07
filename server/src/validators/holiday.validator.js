@@ -14,28 +14,28 @@ const withHolidayAliases = (schema) => {
     });
 };
 
-export const createHolidaySchema = withHolidayAliases(
-  Joi.object({
-    branchCode: code.allow("", null),
+const holidayBaseSchema = Joi.object({
+  branchCode: code.allow("", null),
 
-    holidayName: Joi.string().trim().min(2).max(120).required(),
+  holidayName: Joi.string().trim().min(2).max(120).required(),
 
-    date: Joi.date().required(),
+  date: Joi.date().required(),
 
-    type: Joi.string()
-      .valid("public", "company", "optional", "festival")
-      .default("company"),
+  type: Joi.string()
+    .valid("public", "company", "optional", "festival")
+    .default("company"),
 
-    description: Joi.string().trim().allow("", null),
+  description: Joi.string().trim().allow("", null),
 
-    isPaid: Joi.boolean().default(true),
+  isPaid: Joi.boolean().default(true),
 
-    isActive: Joi.boolean().default(true),
-  })
-);
+  isActive: Joi.boolean().default(true),
+});
+
+export const createHolidaySchema = withHolidayAliases(holidayBaseSchema);
 
 export const updateHolidaySchema = withHolidayAliases(
-  createHolidaySchema.fork(["holidayName", "date"], (schema) =>
+  holidayBaseSchema.fork(["holidayName", "date"], (schema) =>
     schema.optional()
   )
 );
