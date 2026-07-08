@@ -3,7 +3,8 @@ import { ApiError } from "../utils/apiError.js";
 import { env } from "../config/env.js";
 import { Company } from "../models/Company.js";
 import { User } from "../models/User.js";
-import { ROLES, USER_STATUS, ROLE_PERMISSIONS } from "../constants/roles.js";
+import { ROLES, USER_STATUS, ROLE_PERMISSIONS,COMPANY_STATUS,
+  SUBSCRIPTION_STATUS, } from "../constants/roles.js";
 import { sendVerificationEmail } from "./email.service.js";
 
 const generateEmailVerificationToken = () => {
@@ -42,8 +43,8 @@ export const registerCompanyService = async (payload) => {
     email: payload.companyEmail.toLowerCase(),
     phone: payload.companyPhone || "",
     country: payload.country || "",
-    status: "pending_verification",
-    subscriptionStatus: "trial",
+    status: COMPANY_STATUS.PENDING_VERIFICATION,
+    subscriptionStatus: SUBSCRIPTION_STATUS.TRIAL,
     createdBy: null,
   });
 

@@ -15,6 +15,7 @@ export const USER_STATUS = Object.freeze({
 });
 
 export const COMPANY_STATUS = Object.freeze({
+  PENDING_VERIFICATION: "pending_verification",
   ACTIVE: "active",
   INACTIVE: "inactive",
   SUSPENDED: "suspended",
