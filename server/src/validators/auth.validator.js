@@ -107,3 +107,37 @@ export const resetPasswordSchema = Joi.object({
 export const resendVerificationSchema = Joi.object({
   email: Joi.string().email().lowercase().trim().required(),
 });
+
+export const registerCompanySchema = Joi.object({
+  companyName: Joi.string().trim().min(2).max(150).required(),
+
+  companyCode: Joi.string()
+    .trim()
+    .uppercase()
+    .min(2)
+    .max(30)
+    .required(),
+
+  companyEmail: Joi.string().email().lowercase().trim().required(),
+
+  companyPhone: Joi.string().trim().allow("", null),
+
+  country: Joi.string().trim().allow("", null),
+
+  adminName: Joi.string().trim().min(2).max(120).required(),
+
+  adminEmail: Joi.string().email().lowercase().trim().required(),
+
+  adminMobile: Joi.string().trim().allow("", null),
+
+  password: Joi.string().min(8).max(128).required(),
+
+  confirmPassword: Joi.string()
+    .valid(Joi.ref("password"))
+    .required()
+    .messages({
+      "any.only": "Confirm password must match password.",
+    }),
+
+  acceptTerms: Joi.boolean().valid(true).required(),
+});

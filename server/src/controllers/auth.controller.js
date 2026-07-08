@@ -29,6 +29,10 @@ import {
   resetPasswordSchema,
   resendVerificationSchema,
 } from "../validators/auth.validator.js";
+import { registerCompanySchema } from "../validators/auth.validator.js";
+import { registerCompanyService } from "../services/onboarding.service.js";
+import { Company } from "../models/Company.js";
+
 
 const cookieOptions = {
   httpOnly: true,
@@ -498,6 +502,14 @@ export const verifyEmail = asyncHandler(async (req, res) => {
   }
 
   user.isEmailVerified = true;
+
+  if (user.role === ROLES.COMPANY_ADMIN && user.companyId) {
+    await Company.findByIdAndUpdate(user.companyId, {
+      status: "active",
+      updatedBy: user._id,
+    });
+  }
+
   user.emailVerificationTokenHash = null;
   user.emailVerificationExpiresAt = null;
 
@@ -675,3 +687,16 @@ export const revokeMySession = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, null, "Session revoked"));
 });
 
+export const registerCompany = asyncHandler(async (req, res) => {
+  const { value, error } = registerCompanySchema.validate(req.body);
+
+  if (error) {
+    throw new ApiError(400, error.details[0].message);
+  }
+
+  const data = await registerCompanyService(value);
+
+  res.status(201).json(
+    new ApiResponse(201, data, "Company registration successful. Please verify your email.")
+  );
+});

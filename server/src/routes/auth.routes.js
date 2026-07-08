@@ -14,6 +14,7 @@ import {
   adminUnlockUser,
   getMySessions,
   revokeMySession,
+  registerCompany,
 } from "../controllers/auth.controller.js";
 import {
   requireAuth,
@@ -25,6 +26,7 @@ import { ROLES } from "../constants/roles.js";
 
 const router = Router();
 
+router.post("/register-company", registerCompany);
 router.post("/login", loginRateLimiter, login);
 router.post("/refresh-token", refreshToken);
 router.post("/forgot-password", forgotPassword);
