@@ -70,11 +70,25 @@ export const registerCompanyService = async (payload) => {
 
   const verifyUrl = `${env.CLIENT_ORIGIN}/verify-email?token=${verification.token}`;
 
+let verificationEmailSent = true;
+let emailWarning = null;
+
+try {
   await sendVerificationEmail({
     to: admin.email,
     name: admin.name,
     verifyUrl,
   });
+} catch (emailError) {
+  verificationEmailSent = false;
+  emailWarning =
+    "Company registered, but verification email could not be sent. Please check SMTP credentials and resend verification email.";
+
+  console.error("[registerCompany] Verification email failed:", {
+    to: admin.email,
+    message: emailError.message,
+  });
+}
 
   return {
     company: {
@@ -91,5 +105,8 @@ export const registerCompanyService = async (payload) => {
       isEmailVerified: admin.isEmailVerified,
     },
     message: "Company registered successfully. Please verify your email before login.",
+    verificationEmailSent,
+...(emailWarning ? { emailWarning } : {}),
+...(env.NODE_ENV !== "production" ? { verificationUrl: verifyUrl } : {}),
   };
 };
