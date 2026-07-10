@@ -21,6 +21,7 @@ import hrDashboardRoutes from "./routes/hrDashboard.routes.js";
 import hrReportRoutes from "./routes/hrReport.routes.js";
 import communicationRoutes from "./routes/communication.routes.js";
 import { notFound, errorHandler } from "./middleware/error.middleware.js";
+import employeeSelfRoutes from "./routes/employeeSelf.routes.js";
 
 const app = express();
 
@@ -197,6 +198,7 @@ app.use("/hr/meetings", meetingRoutes);
 app.use("/hr/dashboard", hrDashboardRoutes);
 app.use("/hr/reports", hrReportRoutes);
 app.use("/hr/communication", communicationRoutes);
+app.use("/employee", employeeSelfRoutes);
 
 /* ============================================================
    Error Handlers
