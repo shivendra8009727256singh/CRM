@@ -742,7 +742,7 @@ export const createEmployeeService = async (currentUser, payload) => {
       emailVerificationTokenHash: verification.tokenHash,
       emailVerificationExpiresAt: verification.expiresAt,
 
-      forcePasswordChange: true,
+      forcePasswordChange: false,
 
       createdBy: currentUser._id,
     });

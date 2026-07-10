@@ -1588,7 +1588,7 @@ export const convertCandidateToEmployeeService = async (
     // Welcome email includes temp password, so do not block login by verification.
     isEmailVerified: true,
   
-    forcePasswordChange: true,
+    forcePasswordChange: false,
     createdBy: currentUser._id,
   });
 

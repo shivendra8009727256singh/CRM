@@ -1,4 +1,6 @@
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
+
 import { env } from "../config/env.js";
 import { ApiError } from "../utils/apiError.js";
 import { ROLE_PERMISSIONS, ROLES, USER_STATUS } from "../constants/roles.js";
@@ -12,22 +14,19 @@ import {
   updateUserById,
   countActiveCompanyAdmins,
 } from "../repositories/user.repository.js";
-import { findCompanyById } from "../repositories/company.repository.js";
-import { findCompanyByCode } from "../repositories/company.repository.js";
-import crypto from "crypto";
+import {
+  findCompanyById,
+  findCompanyByCode,
+} from "../repositories/company.repository.js";
 import {
   sendVerificationEmail,
   sendAdminPasswordResetEmail,
 } from "./email.service.js";
 
-
 const createEmailVerificationToken = () => {
   const token = crypto.randomBytes(32).toString("hex");
 
-  const tokenHash = crypto
-    .createHash("sha256")
-    .update(token)
-    .digest("hex");
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
 
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
@@ -192,12 +191,13 @@ export const createUserService = async (currentUser, payload) => {
     designation: payload.designation || "",
     status: USER_STATUS.ACTIVE,
 
-    // user must verify email before login
+    // User must verify email before login.
     isEmailVerified: false,
     emailVerificationTokenHash: verification.tokenHash,
     emailVerificationExpiresAt: verification.expiresAt,
 
-    // keep false if you want login directly after verification
+    // Simple auth flow:
+    // Do not force change password before login.
     forcePasswordChange: false,
 
     createdBy: currentUser._id,
@@ -351,7 +351,6 @@ export const unblockUserService = async (currentUser, id) => {
   return targetUser.toSafeObject();
 };
 
-
 export const resetUserPasswordService = async (
   currentUser,
   id,
@@ -376,7 +375,11 @@ export const resetUserPasswordService = async (
   }
 
   targetUser.passwordHash = await bcrypt.hash(password, env.BCRYPT_ROUNDS);
-  targetUser.forcePasswordChange = true;
+
+  // Simple auth flow:
+  // User can login directly with reset password.
+  targetUser.forcePasswordChange = false;
+
   targetUser.loginAttempts = 0;
   targetUser.lockUntil = null;
   targetUser.resetPasswordTokenHash = null;
@@ -389,7 +392,7 @@ export const resetUserPasswordService = async (
 
   const result = {
     passwordReset: true,
-    forcePasswordChange: true,
+    forcePasswordChange: false,
     emailSent: false,
     emailSentTo: null,
     emailWarning: null,

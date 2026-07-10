@@ -18,7 +18,6 @@ import {
 } from "../controllers/auth.controller.js";
 import {
   requireAuth,
-  requireAuthOrForceChange,
   requireRole,
 } from "../middleware/auth.middleware.js";
 import { loginRateLimiter } from "../middleware/rateLimit.middleware.js";
@@ -42,7 +41,7 @@ router.patch("/profile", requireAuth, updateProfile);
 router.get("/sessions", requireAuth, getMySessions);
 router.delete("/sessions/:sessionId", requireAuth, revokeMySession);
 
-router.post("/change-password", requireAuthOrForceChange, changePassword);
+router.post("/change-password", requireAuth, changePassword);
 
 router.post(
   "/admin/unlock-user/:userId",

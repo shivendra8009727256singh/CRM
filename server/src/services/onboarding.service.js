@@ -1,10 +1,16 @@
 import crypto from "crypto";
+
 import { ApiError } from "../utils/apiError.js";
 import { env } from "../config/env.js";
 import { Company } from "../models/Company.js";
 import { User } from "../models/User.js";
-import { ROLES, USER_STATUS, ROLE_PERMISSIONS,COMPANY_STATUS,
-  SUBSCRIPTION_STATUS, } from "../constants/roles.js";
+import {
+  ROLES,
+  USER_STATUS,
+  ROLE_PERMISSIONS,
+  COMPANY_STATUS,
+  SUBSCRIPTION_STATUS,
+} from "../constants/roles.js";
 import { sendVerificationEmail } from "./email.service.js";
 
 const generateEmailVerificationToken = () => {
@@ -62,33 +68,43 @@ export const registerCompanyService = async (payload) => {
     isEmailVerified: false,
     emailVerificationTokenHash: verification.tokenHash,
     emailVerificationExpiresAt: verification.expiresAt,
+
+    // Simple auth flow:
+    // Register -> verify email -> login.
+    // Do not force change password before login.
+    forcePasswordChange: false,
+
     createdBy: null,
   });
 
   await admin.setPassword(payload.password);
   await admin.save();
 
+  await Company.findByIdAndUpdate(company._id, {
+    createdBy: admin._id,
+  });
+
   const verifyUrl = `${env.CLIENT_ORIGIN}/verify-email?token=${verification.token}`;
 
-let verificationEmailSent = true;
-let emailWarning = null;
+  let verificationEmailSent = true;
+  let emailWarning = null;
 
-try {
-  await sendVerificationEmail({
-    to: admin.email,
-    name: admin.name,
-    verifyUrl,
-  });
-} catch (emailError) {
-  verificationEmailSent = false;
-  emailWarning =
-    "Company registered, but verification email could not be sent. Please check SMTP credentials and resend verification email.";
+  try {
+    await sendVerificationEmail({
+      to: admin.email,
+      name: admin.name,
+      verifyUrl,
+    });
+  } catch (emailError) {
+    verificationEmailSent = false;
+    emailWarning =
+      "Company registered, but verification email could not be sent. Please check SMTP credentials and resend verification email.";
 
-  console.error("[registerCompany] Verification email failed:", {
-    to: admin.email,
-    message: emailError.message,
-  });
-}
+    console.error("[registerCompany] Verification email failed:", {
+      to: admin.email,
+      message: emailError.message,
+    });
+  }
 
   return {
     company: {
@@ -104,9 +120,11 @@ try {
       role: admin.role,
       isEmailVerified: admin.isEmailVerified,
     },
-    message: "Company registered successfully. Please verify your email before login.",
     verificationEmailSent,
-...(emailWarning ? { emailWarning } : {}),
-...(env.NODE_ENV !== "production" ? { verificationUrl: verifyUrl } : {}),
+    ...(emailWarning ? { emailWarning } : {}),
+    ...(env.NODE_ENV !== "production" ? { verificationUrl: verifyUrl } : {}),
+    message: verificationEmailSent
+      ? "Company registered successfully. Please verify your email before login."
+      : "Company registered successfully, but verification email could not be sent.",
   };
 };
