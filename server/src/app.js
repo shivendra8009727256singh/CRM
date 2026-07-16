@@ -23,6 +23,7 @@ import communicationRoutes from "./routes/communication.routes.js";
 import { notFound, errorHandler } from "./middleware/error.middleware.js";
 import employeeSelfRoutes from "./routes/employeeSelf.routes.js";
 import companyAdminDashboardRoutes from "./routes/companyAdminDashboard.routes.js";
+import superAdminDashboardRoutes from "./routes/superAdminDashboard.routes.js";
 
 const app = express();
 
@@ -201,6 +202,7 @@ app.use("/hr/reports", hrReportRoutes);
 app.use("/hr/communication", communicationRoutes);
 app.use("/employee", employeeSelfRoutes);
 app.use("/company-admin/dashboard",companyAdminDashboardRoutes);
+app.use("/super-admin/dashboard",superAdminDashboardRoutes);
 
 /* ============================================================
    Error Handlers
